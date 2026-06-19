@@ -323,12 +323,26 @@ class AppController:
         self._stop_btn.disable()
 
 
-def create_ui() -> AppController:
-    """Baut die Seite (ruft NICHT ``ui.run``). Erzeugt Backend + GPU-Liste und das Layout."""
+def create_ui() -> None:
+    """Registriert die Seite unter ``/`` (ruft NICHT ``ui.run``).
+
+    Die UI wird bewusst in einem **expliziten** ``@ui.page("/")``-Handler aufgebaut, NICHT
+    auf der Auto-Index-Seite. Das ist für den PyInstaller-Build zwingend: Für die
+    Auto-Index-Seite führt NiceGUI das Einstiegsskript via ``runpy.run_path(sys.argv[0])``
+    erneut aus — in der gepackten ``.exe`` ist ``sys.argv[0]`` aber eine Binärdatei
+    (Null-Bytes) → ``SyntaxError: source code string cannot contain null bytes``. Ein
+    expliziter Seiten-Handler wird hingegen direkt aufgerufen.
+
+    Backend und GPU-Liste werden einmalig beim Start ermittelt; der Handler baut pro
+    Client (im nativen Fenster genau einer) das Layout.
+    """
     backend = build_backend()
     try:
         gpus = backend.list_gpus()
     except GpuEfficiencyError as exc:
         _LOG.warning("GPU-Liste konnte nicht gelesen werden: %s", exc)
         gpus = []
-    return AppController(gpus, backend)
+
+    @ui.page("/")
+    def _index() -> None:
+        AppController(gpus, backend)
