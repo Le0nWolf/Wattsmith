@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Builds
+build/
+dist/
+*.spec
+
+# uv
+# uv.lock wird eingecheckt; nur das Env wird ignoriert.
+
+# NiceGUI (sollte gar nicht entstehen — kein Persistent-Storage; zur Sicherheit ignoriert)
+.nicegui/
+
+# Gebündeltes PresentMon-Binary (Benutzer legt es selbst ab; siehe assets/presentmon/README.md)
+assets/presentmon/*.exe
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

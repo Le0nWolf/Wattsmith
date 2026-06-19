@@ -1,0 +1,29 @@
+name: Quality (lint + types + tests)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest  # Domänen-Tests brauchen keine GPU
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        run: pip install uv
+      - name: Sync deps
+        run: uv sync --extra dev
+      - name: Ruff (lint)
+        run: uv run ruff check .
+      - name: Ruff (format check)
+        run: uv run ruff format --check .
+      - name: Pyright (strict)
+        run: uv run pyright
+        continue-on-error: true  # Typecheck-Hinweise nicht hart brechen lassen
+      - name: Pytest
+        run: uv run pytest
