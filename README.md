@@ -175,7 +175,9 @@ Undervolt verschiebt sich das Knie – das Tool findet das neue).
    für **FPS/W-Peak**, **Knie** und **Empfehlung**, plus Ergebnis-Tabelle.
 6. **Empfehlung anwenden** setzt das empfohlene Limit, **Reset Default** stellt den Default her.
 7. **CSV-Export** / **Run speichern/laden** (JSON) – so kannst du pro Spiel einen Run ablegen und
-   vergleichen.
+   vergleichen. Die gespeicherte JSON-Datei ist selbstbeschreibend (Konfiguration, GPU, alle
+   Messzeilen, die drei Betriebspunkte) und lässt sich direkt **an Claude zur Auswertung**
+   schicken.
 
 ### Die drei Betriebspunkte
 

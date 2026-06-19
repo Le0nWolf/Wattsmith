@@ -38,6 +38,41 @@ __all__ = ["AppController", "build_backend", "build_benchmark", "build_perf_sour
 _LOG = get_logger(__name__)
 _ACCENT = "#26a69a"
 
+# In-App-Kurzanleitung (aufklappbar). Bewusst knapp und handlungsorientiert.
+_HELP_MD = """
+**Idee:** Das Tool senkt das Power-Limit Stufe für Stufe automatisch ab, misst pro Stufe
+Verbrauch und Performance und empfiehlt am Ende das sparsamste Limit ohne spürbaren Verlust.
+Du musst nur für **konstante GPU-Last** sorgen — den Rest macht das Tool allein.
+
+**In 6 Schritten:**
+1. **Last vorbereiten** — entweder unten einen *Benchmark-Befehl* eintragen (Loop-Benchmark wie
+   Unigine Superposition, läuft endlos) **oder** ein Spiel manuell starten und es während des
+   ganzen Sweeps laufen lassen.
+2. **Mess-Modus wählen** — *Nur Takt* (schnell, kein Setup) · *PresentMon (FPS)* (echte FPS +
+   1%/0.1%-Lows, braucht den Prozessnamen) · *Compute* (eigene Last) · *HWiNFO*.
+3. **Bereich/Dauern/Toleranzen** prüfen — die Defaults (100→50 %, 3 % Ø-FPS, 5 % 1%-Low) passen
+   meist. *Reihenfolge randomisieren* bleibt an (gegen Aufheiz-Verzerrung; Anzeige bleibt sortiert).
+4. **Sweep starten** — das Tool fährt die Stufen vollautomatisch ab. Einfach die Last weiterlaufen
+   lassen / weiterspielen. Mit **Stop** brichst du jederzeit ab (Default-Limit wird sofort gesetzt).
+5. **Ergebnis lesen** — Chart + Tabelle + Empfehlung (Sweet-Spot, Effizienz-Peak, Knie).
+6. **Anwenden/Exportieren** — *Empfehlung anwenden* setzt das Limit, *Reset Default* stellt zurück;
+   *CSV-Export* / *Run speichern* sichern den Lauf (die JSON-Datei kannst du auch Claude zur
+   Auswertung schicken).
+
+**Vorher an/aus stellen:**
+- **V-Sync und FPS-Limit AUS** — sonst deckelt der Cap die Kurve und das Ergebnis stimmt nicht.
+- **GPU-lastige, reproduzierbare Szene** — beim Spielen möglichst immer dieselbe Stelle/Last.
+- **Afterburner:** nur die Undervolt-/V-F-Kurve nutzen, den **Power-Limit-Regler dort auf Default**
+  lassen (sonst Schreibkonflikt — dieses Tool soll das Power-Limit allein besitzen).
+- **PresentMon-Modus:** als **Administrator** starten; Prozessname = der tatsächlich rendernde
+  Prozess (bei Launchern oft ein Kindprozess).
+- **HWiNFO-Modus:** HWiNFO läuft + „Shared Memory Support" an (Free-Version: nach 12 h neu
+  aktivieren); FPS nur, wenn HWiNFO sie von RTSS bekommt.
+
+**Buttons:** *Sweep starten* / *Stop* · *Empfehlung anwenden* (setzt das empfohlene Limit) ·
+*Reset Default* (Hersteller-Default) · *CSV-Export* · *Run speichern* / *Run laden* (JSON).
+"""
+
 
 def build_backend() -> GpuBackend:
     """Versucht NVML; fällt bei fehlender Berechtigung/Init-Fehler auf nvidia-smi zurück."""
@@ -97,6 +132,10 @@ class AppController:
         with ui.header().classes("items-center"):
             ui.label(APP_TITLE).classes("text-xl font-bold")
         self._build_no_gpu_banner()
+        with ui.expansion("So funktioniert's — kurze Anleitung", icon="help_outline").classes(
+            "w-full"
+        ):
+            ui.markdown(_HELP_MD)
         with ui.row().classes("w-full no-wrap"):
             with ui.column().classes("w-1/3"):
                 self._panel = ConfigPanel(self._gpus)
