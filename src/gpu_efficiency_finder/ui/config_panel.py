@@ -16,7 +16,9 @@ from pydantic import ValidationError
 
 from gpu_efficiency_finder.config import SourceConfig, SweepConfig
 from gpu_efficiency_finder.constants import (
+    BENCHMARK_PRESETS,
     DEFAULT_BENCHMARK_PLACEHOLDER,
+    DEFAULT_BENCHMARK_PRESET,
     PRESENTMON_PROCESS_HINT,
     MeasurementMode,
 )
@@ -39,8 +41,13 @@ _MODE_HELP = (
 )
 
 _BENCHMARK_HINT = (
-    "3DMark startet nur in der Professional Edition per CLI; Score-am-Ende-Benchmarks sind "
-    "ungeeignet (durchgehende Last nötig); FurMark wird nicht empfohlen."
+    "Preset wählen → Befehl wird gesetzt; Pfad ggf. an deine Installation anpassen. Empfohlen: "
+    "ein Loop-Benchmark (Superposition), damit die Last konstant und reproduzierbar ist. "
+    "Score-am-Ende-Benchmarks sind ungeeignet (durchgehende Last nötig). FurMark erzeugt eine "
+    "untypische Extrem-Last → nur für „Nur Takt“ sinnvoll, nicht repräsentativ fürs Gaming. "
+    "OCCT eignet sich; aber für die Messung eine KONSTANTE Last wählen — wechselnde Lasten "
+    "(gut für Undervolt-Stabilität) verrauschen die Effizienzkurve. 3DMark braucht für CLI die "
+    "Professional Edition. Feld leer lassen = Last manuell starten (z. B. ein Spiel)."
 )
 
 _HWINFO_HINT = (
@@ -102,12 +109,25 @@ class ConfigPanel:
     def _build_benchmark_inputs(self) -> None:
         ui.separator()
         ui.label("Externe Benchmark-Last (optional)").classes("font-bold")
+        self._preset = ui.select(
+            options=list(BENCHMARK_PRESETS),
+            value=DEFAULT_BENCHMARK_PRESET,
+            label="Benchmark-Preset",
+            on_change=self._apply_preset,
+        ).classes("w-full")
         self._benchmark = ui.input(
             "Benchmark-Befehl",
             placeholder=DEFAULT_BENCHMARK_PLACEHOLDER,
         ).classes("w-full")
         self._warmup = ui.number("Warmup (s)", value=10.0, min=0, max=120, step=1)
         ui.label(_BENCHMARK_HINT).classes("text-xs text-grey")
+
+    def _apply_preset(self) -> None:
+        """Füllt das Befehlsfeld anhand des gewählten Presets (außer „Eigener Befehl“)."""
+        name = str(self._preset.value)
+        if name == "Eigener Befehl":
+            return
+        self._benchmark.value = BENCHMARK_PRESETS.get(name, "")
 
     def _build_presentmon_inputs(self) -> None:
         ui.separator()

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as _dt
+import time
 
 from nicegui import run, ui
 
@@ -74,6 +75,12 @@ Du musst nur für **konstante GPU-Last** sorgen — den Rest macht das Tool alle
 """
 
 
+def _format_mmss(seconds: float) -> str:
+    """Sekunden als ``m:ss`` formatieren."""
+    total = int(seconds)
+    return f"{total // 60}:{total % 60:02d}"
+
+
 def build_backend() -> GpuBackend:
     """Versucht NVML; fällt bei fehlender Berechtigung/Init-Fehler auf nvidia-smi zurück."""
     nvml = NvmlBackend()
@@ -122,6 +129,10 @@ class AppController:
         self._result: SweepResult | None = None
         self._stop_flag = False
         self._running = False
+        self._eta_timer: ui.timer | None = None
+        self._eta_total_s = 0.0
+        self._eta_start = 0.0
+        self._planned_steps = 0
         self._build_layout()
 
     # -- Layout -----------------------------------------------------------
@@ -143,6 +154,9 @@ class AppController:
             with ui.column().classes("w-2/3"):
                 self._status = ui.label("Bereit.").classes("text-sm")
                 self._telemetry = ui.label("").classes("text-xs text-grey")
+                self._progress = ui.linear_progress(value=0.0, show_value=False).classes("w-full")
+                self._progress.visible = False
+                self._eta = ui.label("").classes("text-xs text-grey")
                 self._chart = EfficiencyChart()
                 self._table = ResultsTable()
                 self._recommendation = ui.label("").classes("text-sm")
@@ -193,7 +207,7 @@ class AppController:
         except GpuEfficiencyError as exc:
             ui.notify(str(exc), type="negative")
             return
-        self._begin_run()
+        self._begin_run(sweep_config)
         try:
             await run.io_bound(self._run_sweep_sync, sweep_config, source_config, perf, benchmark)
         except GpuPermissionError:
@@ -364,7 +378,7 @@ class AppController:
 
     # -- Button-Zustand ---------------------------------------------------
 
-    def _begin_run(self) -> None:
+    def _begin_run(self, sweep_config: SweepConfig) -> None:
         self._running = True
         self._stop_flag = False
         self._rows = []
@@ -372,11 +386,49 @@ class AppController:
         self._recommendation.set_text("")
         self._start_btn.disable()
         self._stop_btn.enable()
+        self._start_eta(sweep_config)
+
+    def _start_eta(self, sweep_config: SweepConfig) -> None:
+        """Schätzt die Gesamtdauer und startet den Live-Countdown.
+
+        Schätzung = (Stufen + ggf. Baseline-Gegenmessung) × (Aufwärm- + Messdauer).
+        Abkühlpausen sind nicht enthalten (variabel) — daher „mind."-Charakter.
+        """
+        steps = sweep_config.steps()
+        per_step = sweep_config.settle_s + sweep_config.measure_s
+        extra = 1 if sweep_config.recheck_baseline else 0
+        self._planned_steps = len(steps)
+        self._eta_total_s = (len(steps) + extra) * per_step
+        self._eta_start = time.monotonic()
+        self._progress.value = 0.0
+        self._progress.visible = True
+        ui.notify(
+            f"Sweep gestartet — {self._planned_steps} Stufen, geschätzt ca. "
+            f"{self._eta_total_s / 60.0:.1f} min (ohne Abkühlpausen).",
+            type="info",
+        )
+        self._eta_timer = ui.timer(1.0, self._tick_eta)
+
+    def _tick_eta(self) -> None:
+        if not self._running or self._eta_total_s <= 0:
+            return
+        elapsed = time.monotonic() - self._eta_start
+        remaining = max(0.0, self._eta_total_s - elapsed)
+        self._progress.value = min(1.0, elapsed / self._eta_total_s)
+        self._eta.set_text(
+            f"{len(self._rows)}/{self._planned_steps} Stufen gemessen · "
+            f"noch ca. {_format_mmss(remaining)} (Schätzung)"
+        )
 
     def _end_run(self) -> None:
         self._running = False
         self._start_btn.enable()
         self._stop_btn.disable()
+        if self._eta_timer is not None:
+            self._eta_timer.cancel()
+            self._eta_timer = None
+        self._progress.visible = False
+        self._eta.set_text("")
 
 
 def create_ui() -> None:

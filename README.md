@@ -106,8 +106,12 @@ Alle Modi sind über denselben Schalter wählbar:
 ## Benchmark-Last
 
 Während des Sweeps muss eine **konstante, wiederholbare** GPU-Last anliegen. Das Tool kann eine
-externe Last selbst starten (Feld „Benchmark-Befehl + Argumente" + Warmup-Zeit) oder du startest
-sie manuell (z. B. ein Spiel) und lässt das Feld leer.
+externe Last selbst starten oder du startest sie manuell (z. B. ein Spiel) und lässt das Feld leer.
+
+Über das **Benchmark-Preset-Dropdown** wählst du einen bekannten Benchmark (Superposition / Heaven /
+Valley / FurMark / OCCT) und der passende Befehl wird vorausgefüllt — du musst meist nur den **Pfad
+an deine Installation anpassen**. „Eigener Befehl" lässt das Feld unangetastet; „Spiel / manuell"
+leert es (du startest die Last selbst). Eine Warmup-Zeit wartet, bis der Benchmark im Loop ist.
 
 - **Empfohlen:** ein loop-fähiger Benchmark wie **Unigine Superposition / Heaven / Valley**
   (laufen als Endlosschleife; Superposition per CLI/Config startbar).
@@ -169,8 +173,10 @@ Undervolt verschiebt sich das Knie – das Tool findet das neue).
 2. Toleranzen festlegen (Default: 3 % Ø-FPS, 5 % 1%-Low). Optional eine **absolute FPS-Untergrenze**
    einschalten (z. B. Monitor-Hz) – sie muss nicht genutzt werden.
 3. Optional einen Benchmark-Befehl + Warmup eintragen, oder die Last manuell starten.
-4. **Sweep starten.** Live-Status, Live-Telemetrie und Chart aktualisieren sich pro Stufe.
-   Mit **Stop** jederzeit abbrechen – das Default-Limit wird sofort wiederhergestellt.
+4. **Sweep starten.** Beim Start zeigt das Tool die **geschätzte Gesamtdauer**; währenddessen
+   laufen ein **Fortschrittsbalken mit Rest-Zeit** (z. B. „4/11 Stufen · noch ca. 3:20"), Live-Status,
+   Live-Telemetrie und Chart mit. So weißt du, wie lange du die Last (oder das Spiel) noch laufen
+   lassen musst. Mit **Stop** jederzeit abbrechen – das Default-Limit wird sofort wiederhergestellt.
 5. Ergebnis: Chart (Ø-FPS durchgezogen, 1% Low gestrichelt über gemessenem Verbrauch) mit Markern
    für **FPS/W-Peak**, **Knie** und **Empfehlung**, plus Ergebnis-Tabelle.
 6. **Empfehlung anwenden** setzt das empfohlene Limit, **Reset Default** stellt den Default her.
@@ -218,7 +224,7 @@ Ehrliche Caveats (systembedingt, **keine** Datei-Artefakte):
 
 Ports & Adapters (Hexagonal). Details und Konventionen siehe [`CLAUDE.md`](CLAUDE.md).
 
-```
+```text
 src/gpu_efficiency_finder/
 ├── domain/      # PURE Logik (analysis, sweep) — testbar ohne GPU
 ├── ports/       # Protocol-Interfaces (GpuBackend, PerfSource, BenchmarkRunner)
