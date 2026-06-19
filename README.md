@@ -7,8 +7,9 @@ Leistung oder Frametime-Stabilität zu verlieren – statt jede Stufe manuell du
 
 - **Plattform:** Windows / NVIDIA. Die Ports-&-Adapters-Architektur erlaubt später AMD/Linux
   als weiteren Adapter, ohne die Kern-Logik anzufassen.
-- **Auslieferung:** eine einzelne, portable `.exe` (PyInstaller `--onefile`, natives Fenster via
-  pywebview). Kein Python-Install nötig, keine zurückbleibenden Dateien.
+- **Auslieferung:** eine einzelne, portable `.exe` (PyInstaller `--onefile`). Beim Start öffnet
+  sich die Oberfläche im **Standard-Browser** (kein eingebettetes Fenster/WebView2). Kein
+  Python-Install nötig, keine zurückbleibenden Dateien.
 - **Lizenz:** MIT.
 
 > **Sicherheit:** Ein abgesenktes Power-Limit kann die GPU nicht beschädigen – die Karte taktet
@@ -23,7 +24,7 @@ Empfohlen mit [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv sync --extra dev          # Env + Dependencies
-uv run gpu-efficiency-finder # App starten (natives Fenster)
+uv run gpu-efficiency-finder # App starten (öffnet sich im Browser)
 uv run pytest                # Tests (laufen ohne GPU)
 uv run ruff check .          # Lint
 uv run pyright               # Typecheck (strict)
@@ -53,9 +54,7 @@ uv run nicegui-pack --onefile --name GpuEfficiencyFinder src/gpu_efficiency_find
 ```
 
 Für einen automatischen UAC-Admin-Prompt eine `.spec` erzeugen und in `EXE(...)`
-`uac_admin=True` setzen, dann `pyinstaller GpuEfficiencyFinder.spec`. Falls das native Fenster
-leer bleibt oder Imports fehlen, den PyInstaller-Aufruf um `--collect-all webview` (ggf.
-zusätzlich `--collect-all clr_loader` / `pythonnet`) erweitern.
+`uac_admin=True` setzen, dann `pyinstaller GpuEfficiencyFinder.spec`.
 
 ### Per GitHub Actions
 
@@ -72,13 +71,13 @@ Windows-EXE muss auf Windows gebaut werden. `.github/workflows/quality.yml` läs
 | --- | --- | --- |
 | NVIDIA-Treiber | NVML (Steuerung/Telemetrie) | immer nötig |
 | **Admin-Rechte** | Power-Limit setzen, PresentMon-ETW | EXE „als Administrator ausführen" |
-| WebView2-Runtime | natives Fenster (pywebview) | auf aktuellem Windows 10/11 vorinstalliert |
+| Standard-Browser | UI-Anzeige | jeder moderne Browser (Chrome/Edge/Firefox); auf Windows vorhanden |
 | PresentMon | nur FPS-Modus | in die EXE gebündelt (kein Download) |
 | HWiNFO + RTSS | nur HWiNFO-Modus | siehe unten |
 
-**WebView2:** pywebview nutzt unter Windows die Edge-WebView2-Runtime (Evergreen, meist
-vorinstalliert). Bleibt das Fenster weiß/leer, fehlt die Runtime → einmalig den
-„Microsoft Edge WebView2 Runtime"-Installer ausführen.
+**Browser-Modus:** Die App startet einen lokalen Webserver und öffnet die Oberfläche im
+Standard-Browser (kein eingebettetes Fenster, keine WebView2-Runtime nötig). Schließt du den
+Browser-Tab, läuft der Hintergrundprozess weiter, bis du ihn beendest.
 
 **Admin:** Das Setzen des Power-Limits (NVML) und die PresentMon-ETW-Session brauchen
 Administrator-Rechte. Ohne Admin weicht das Tool automatisch auf `nvidia-smi -pl` aus und zeigt
@@ -222,7 +221,7 @@ src/gpu_efficiency_finder/
 ├── infra/       # PresentMon-Bundle-Pfad, Persistenz (JSON/CSV)
 ├── ui/          # NiceGUI-Bausteine (config_panel, chart, results_table)
 ├── app.py       # Koordinator
-└── __main__.py  # Einstieg + Composition Root (native Fenster)
+└── __main__.py  # Einstieg + Composition Root (Browser-Modus)
 ```
 
 Die Domäne hängt nur an Ports und ist mit Fake-Adaptern vollständig **ohne GPU** testbar

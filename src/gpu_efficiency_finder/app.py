@@ -96,6 +96,7 @@ class AppController:
         ui.colors(primary=_ACCENT)
         with ui.header().classes("items-center"):
             ui.label(APP_TITLE).classes("text-xl font-bold")
+        self._build_no_gpu_banner()
         with ui.row().classes("w-full no-wrap"):
             with ui.column().classes("w-1/3"):
                 self._panel = ConfigPanel(self._gpus)
@@ -107,6 +108,22 @@ class AppController:
                 self._table = ResultsTable()
                 self._recommendation = ui.label("").classes("text-sm")
                 self._path = ui.input("Datei-Pfad (CSV/JSON)").classes("w-full")
+        if not self._gpus:
+            # Keine NVIDIA-GPU/Treiber: Sweep deaktivieren statt später eine Exception
+            # zu werfen. Der Hinweis-Banner erklärt es; die UI bleibt voll bedienbar.
+            self._start_btn.disable()
+
+    def _build_no_gpu_banner(self) -> None:
+        """Zeigt einen klaren Hinweis, wenn keine GPU erkannt wurde — kein Fehler/Traceback."""
+        if self._gpus:
+            return
+        with ui.element("div").classes("w-full bg-orange-9 text-white q-pa-sm rounded-borders"):
+            ui.label("Keine NVIDIA-GPU gefunden").classes("font-bold")
+            ui.label(
+                "Auf diesem Rechner ist kein NVIDIA-Treiber/keine NVIDIA-GPU verfügbar — "
+                "der Sweep ist deaktiviert. Die App startet trotzdem normal; zum Messen auf "
+                "einem System mit NVIDIA-GPU und Administrator-Rechten ausführen."
+            ).classes("text-sm")
 
     def _build_buttons(self) -> None:
         with ui.row().classes("w-full"):

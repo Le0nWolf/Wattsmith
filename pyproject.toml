@@ -8,7 +8,7 @@ license = { text = "MIT" }
 authors = [{ name = "GPU Efficiency Finder" }]
 dependencies = [
     "nicegui>=2.0",
-    "pywebview>=5.0",
+    # Kein pywebview/WebView2: die UI läuft im Standard-Browser (robuster, keine Runtime-Abhängigkeit).
     "nvidia-ml-py>=12.535",
     "kneed>=0.8",
     "plotly>=5.20",

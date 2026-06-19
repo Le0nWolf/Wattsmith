@@ -1,8 +1,12 @@
 """Einstieg + Composition Root.
 
-Konfiguriert das Logging, baut die NiceGUI-Seite (``app.create_ui``) und startet das
-native Fenster. Registriert zusätzlich einen ``atexit``-Handler, der das GPU-Power-Limit
-als letztes Sicherheitsnetz auf den Default zurücksetzt.
+Konfiguriert das Logging, baut die NiceGUI-Seite (``app.create_ui``) und startet den
+Webserver, der die App im **Standard-Browser** öffnet. Registriert zusätzlich einen
+``atexit``-Handler, der das GPU-Power-Limit als letztes Sicherheitsnetz auf den Default
+zurücksetzt.
+
+Bewusst KEIN eingebettetes Fenster (pywebview/WebView2): Browser-Modus ist deutlich
+robuster und hat keine WebView2-Laufzeit-Abhängigkeit.
 
 WICHTIG: ``ui.run`` darf NICHT beim Import laufen — daher der Guard unten.
 """
@@ -23,9 +27,6 @@ from gpu_efficiency_finder.logging_setup import get_logger, setup_logging
 __all__ = ["main"]
 
 _LOG = get_logger(__name__)
-
-# Fenstergröße des nativen pywebview-Fensters.
-_WINDOW_SIZE = (1100, 820)
 
 
 def _reset_power_limit_safety_net() -> None:
@@ -52,15 +53,15 @@ def main() -> None:
     atexit.register(_reset_power_limit_safety_net)
     app.create_ui()
     ui.run(
-        native=True,
-        window_size=_WINDOW_SIZE,
+        native=False,
+        show=True,  # öffnet automatisch den Standard-Browser
         reload=False,
         title=APP_TITLE,
     )
 
 
-# Guard: native Mode + PyInstaller/Multiprocessing spawnen Subprozesse, die dieses Modul
-# erneut importieren. Ohne diesen Guard (inkl. "__mp_main__") würden mehrere Fenster
-# geöffnet bzw. der Build hängen.
+# Guard: PyInstaller/Multiprocessing kann dieses Modul in Subprozessen erneut importieren.
+# Ohne diesen Guard (inkl. "__mp_main__") würde der Server mehrfach gestartet bzw. der
+# Build hängen.
 if __name__ in {"__main__", "__mp_main__"}:
     main()
