@@ -58,10 +58,13 @@ Für einen automatischen UAC-Admin-Prompt eine `.spec` erzeugen und in `EXE(...)
 
 ### Per GitHub Actions
 
-`.github/workflows/build-windows.yml` baut die EXE auf einem `windows-latest`-Runner (manuell per
-*workflow_dispatch* oder bei einem `v*`-Tag). PyInstaller cross-kompiliert **nicht** – eine
-Windows-EXE muss auf Windows gebaut werden. `.github/workflows/quality.yml` lässt zusätzlich
-`ruff`, `pyright` und `pytest` bei jedem Push laufen (die Domänen-Tests brauchen keine GPU).
+`.github/workflows/ci.yml` ist **eine** Pipeline auf einem `windows-latest`-Runner mit
+sequentiellen Schritten: `ruff` (Lint + Format) → `pyright` → `pytest` → **erst dann** EXE bauen
+(`nicegui-pack`) → Artifact hochladen. Schlägt ein früherer Schritt fehl, wird die EXE gar nicht
+erst gebaut. Sie läuft bei jedem Push auf `main`, bei Pull Requests, manuell per
+*workflow_dispatch* und bei `v*`-Tags (dann wird die EXE zusätzlich an ein Release gehängt).
+Komplett auf Windows, weil PyInstaller **nicht** cross-kompiliert; die GPU-freien Tests laufen
+dort genauso.
 
 ---
 

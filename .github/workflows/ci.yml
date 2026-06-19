@@ -1,13 +1,17 @@
-name: Build Windows EXE
+name: CI
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
 
 jobs:
-  build-windows:
+  # Eine Pipeline, sequentielle Schritte: Qualität zuerst, dann erst die EXE bauen.
+  # Läuft komplett auf windows-latest, weil PyInstaller nicht cross-kompiliert
+  # (die EXE muss auf Windows entstehen) — die GPU-freien Tests laufen dort genauso.
+  build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,6 +22,15 @@ jobs:
         run: pip install uv
       - name: Sync deps
         run: uv sync --extra dev
+      - name: Lint (ruff)
+        run: uv run ruff check .
+      - name: Format check (ruff)
+        run: uv run ruff format --check .
+      - name: Typecheck (pyright)
+        run: uv run pyright
+        continue-on-error: true  # Typecheck-Hinweise nicht hart brechen lassen
+      - name: Tests (pytest)
+        run: uv run pytest
       - name: Build EXE
         run: uv run nicegui-pack --onefile --name GpuEfficiencyFinder src/gpu_efficiency_finder/__main__.py
       - name: Upload artifact
