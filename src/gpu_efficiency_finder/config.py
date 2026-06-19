@@ -18,8 +18,10 @@ class SweepConfig(BaseModel):
     start_pct: int = Field(100, ge=20, le=100)
     end_pct: int = Field(50, ge=20, le=100)
     step_pct: int = Field(5, ge=1, le=25)
-    settle_s: float = Field(8.0, ge=2, le=60)
-    measure_s: float = Field(25.0, ge=5, le=120)
+    settle_s: float = Field(8.0, ge=2, le=180)
+    # Obergrenze großzügig, damit das Messfenster die Dauer eines kompletten Benchmark-Loops
+    # abdecken kann (z. B. ein voller 3DMark-Speed-Way-/Time-Spy-Durchlauf).
+    measure_s: float = Field(25.0, ge=5, le=900)
     avg_tol_pct: float = Field(3.0, ge=0, le=30)
     low_tol_pct: float = Field(5.0, ge=0, le=40)
     min_fps_floor: float | None = Field(None, ge=1)  # optional, abschaltbar

@@ -53,6 +53,11 @@ Du musst nur für **konstante GPU-Last** sorgen — den Rest macht das Tool alle
    1%/0.1%-Lows, braucht den Prozessnamen) · *Compute* (eigene Last) · *HWiNFO*.
 3. **Bereich/Dauern/Toleranzen** prüfen — die Defaults (100→50 %, 3 % Ø-FPS, 5 % 1%-Low) passen
    meist. *Reihenfolge randomisieren* bleibt an (gegen Aufheiz-Verzerrung; Anzeige bleibt sortiert).
+   - **Wichtig bei Loop-Benchmarks mit wechselnden Szenen** (3DMark, Superposition): „Messen (s)“
+     auf die **Dauer eines kompletten Loops** (oder ein Vielfaches) setzen. Der Sweep ist
+     zeitbasiert (er fährt das Limit nach fester Zeit weiter, NICHT pro Benchmark-Run). Ist das
+     Fenster genau einen ganzen Loop lang, deckt jede Stufe denselben Szenen-Satz ab → vergleichbar,
+     egal wo im Loop das Fenster beginnt.
 4. **Sweep starten** — das Tool fährt die Stufen vollautomatisch ab. Einfach die Last weiterlaufen
    lassen / weiterspielen. Mit **Stop** brichst du jederzeit ab (Default-Limit wird sofort gesetzt).
 5. **Ergebnis lesen** — Chart + Tabelle + Empfehlung (Sweet-Spot, Effizienz-Peak, Knie).

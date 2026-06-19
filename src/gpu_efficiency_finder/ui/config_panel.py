@@ -91,8 +91,13 @@ class ConfigPanel:
             self._end = ui.number("Ende %", value=50, min=20, max=100, step=5)
             self._step = ui.number("Schritt %", value=5, min=1, max=25, step=1)
         with ui.row().classes("w-full"):
-            self._settle = ui.number("Aufwärmen (s)", value=8.0, min=2, max=60, step=1)
-            self._measure = ui.number("Messen (s)", value=25.0, min=5, max=120, step=1)
+            self._settle = ui.number("Aufwärmen (s)", value=8.0, min=2, max=180, step=1)
+            self._measure = ui.number("Messen (s)", value=25.0, min=5, max=900, step=5)
+        ui.label(
+            "Tipp: „Messen“ ≈ Dauer eines KOMPLETTEN Benchmark-Loops (oder Vielfaches) wählen. "
+            "Dann mittelt jede Stufe denselben Szenen-Durchlauf und bleibt vergleichbar — egal, "
+            "wo im Loop das Fenster startet."
+        ).classes("text-xs text-grey")
         with ui.row().classes("w-full"):
             self._avg_tol = ui.number("Toleranz Ø %", value=3.0, min=0, max=30, step=0.5)
             self._low_tol = ui.number("Toleranz Low %", value=5.0, min=0, max=40, step=0.5)
