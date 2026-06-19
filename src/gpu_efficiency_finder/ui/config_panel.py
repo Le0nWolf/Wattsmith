@@ -94,9 +94,13 @@ class ConfigPanel:
             self._settle = ui.number("Aufwärmen (s)", value=8.0, min=2, max=180, step=1)
             self._measure = ui.number("Messen (s)", value=25.0, min=5, max=900, step=5)
         ui.label(
-            "Tipp: „Messen“ ≈ Dauer eines KOMPLETTEN Benchmark-Loops (oder Vielfaches) wählen. "
-            "Dann mittelt jede Stufe denselben Szenen-Durchlauf und bleibt vergleichbar — egal, "
-            "wo im Loop das Fenster startet."
+            "„Aufwärmen“ = Wartezeit nach JEDEM Limit-Wechsel, die verworfen wird (Takt/Power "
+            "stabilisieren sich erst); erst danach startet der Mess-Countdown."
+        ).classes("text-xs text-grey")
+        ui.label(
+            "„Messen“ ≈ Dauer eines KOMPLETTEN Benchmark-Loops (oder Vielfaches) wählen — dann "
+            "mittelt jede Stufe denselben Szenen-Durchlauf und bleibt vergleichbar, egal wo im "
+            "Loop das Fenster startet."
         ).classes("text-xs text-grey")
         with ui.row().classes("w-full"):
             self._avg_tol = ui.number("Toleranz Ø %", value=3.0, min=0, max=30, step=0.5)
@@ -124,7 +128,11 @@ class ConfigPanel:
             "Benchmark-Befehl",
             placeholder=DEFAULT_BENCHMARK_PLACEHOLDER,
         ).classes("w-full")
-        self._warmup = ui.number("Warmup (s)", value=10.0, min=0, max=120, step=1)
+        self._warmup = ui.number("Benchmark-Warmup (s)", value=10.0, min=0, max=120, step=1)
+        ui.label(
+            "Benchmark-Warmup = EINMALIGE Wartezeit direkt nach dem Start des Benchmarks, bis er "
+            "geladen und im Loop ist (nicht zu verwechseln mit „Aufwärmen“ pro Stufe)."
+        ).classes("text-xs text-grey")
         ui.label(_BENCHMARK_HINT).classes("text-xs text-grey")
 
     def _apply_preset(self) -> None:
