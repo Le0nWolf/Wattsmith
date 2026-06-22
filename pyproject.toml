@@ -1,6 +1,6 @@
 [project]
 name = "gpu-efficiency-finder"
-version = "0.2.3"
+version = "0.2.4"
 description = "Findet den Effizienz-Sweet-Spot einer NVIDIA-GPU per automatischem Power-Limit-Sweep."
 readme = "README.md"
 requires-python = ">=3.12"

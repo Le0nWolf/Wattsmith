@@ -48,14 +48,16 @@ _VALUE_FORMAT = "<d"
 _VALUE_SIZE = struct.calcsize(_VALUE_FORMAT)
 
 _FPS_LABEL_HINTS = ("framerate", "fps", "frames per second")
-_VOLTAGE_LABEL_HINTS = (
+# Zuerst die TATSÄCHLICHE Kern-/VDDC-Spannung; „VID“ (angeforderte Spannung, liegt höher)
+# nur als Fallback, falls kein Kern-Spannungs-Sensor existiert.
+_VOLTAGE_PRIMARY_HINTS = (
     "gpu core voltage",
     "core voltage",
     "kern-spannung",
     "kernspannung",
-    "gpu vid",
     "vddc",
 )
+_VOLTAGE_FALLBACK_HINTS = ("gpu vid", "vid")
 
 _FILE_MAP_READ = 0x0004
 
@@ -218,8 +220,13 @@ class HwinfoSource:
         return None
 
     def read_voltage_mv(self) -> float | None:
-        """Aktuelle GPU-Core-Spannung in mV (best-effort) oder ``None`` (wirft nie)."""
-        found = self._find_value(_VOLTAGE_LABEL_HINTS)
+        """Aktuelle GPU-Core-Spannung in mV (best-effort) oder ``None`` (wirft nie).
+
+        Bevorzugt die tatsächliche Kern-/VDDC-Spannung; „VID“ nur als Fallback.
+        """
+        found = self._find_value(_VOLTAGE_PRIMARY_HINTS) or self._find_value(
+            _VOLTAGE_FALLBACK_HINTS
+        )
         if found is None:
             return None
         value, unit = found
