@@ -85,6 +85,21 @@ def _fmt(value: float | None, digits: int = 1) -> str:
     return f"{value:.{digits}f}"
 
 
+def _temp_cell(value: float | None, good: float, ok: float, warn: float) -> str:
+    """Temperatur mit Ampel-Indikator: 🟢 gut · 🟡 ok · 🟠 hoch · 🔴 kritisch."""
+    if value is None:
+        return "–"
+    if value <= good:
+        dot = "🟢"
+    elif value <= ok:
+        dot = "🟡"
+    elif value <= warn:
+        dot = "🟠"
+    else:
+        dot = "🔴"
+    return f"{value:.0f} {dot}"
+
+
 class ResultsTable:
     """Tabellarische Sicht auf alle gemessenen Sweep-Stufen."""
 
@@ -95,6 +110,10 @@ class ResultsTable:
             row_key="set_watt",
         ).classes("w-full")
         self._table.props("dense flat dark")
+        ui.label(
+            "Temp-Ampel (Edge/Hotspot/Speicher): 🟢 gut · 🟡 ok · 🟠 hoch · 🔴 kritisch "
+            "— Richtwerte für Ampere/RTX 3080."
+        ).classes("text-xs text-grey")
 
     def update(self, rows: list[SweepRow]) -> None:
         """Übernimmt die Sweep-Zeilen in die Tabelle (absteigend nach gesetztem Limit)."""
@@ -118,9 +137,10 @@ class ResultsTable:
             "pct": f"{row.pct}",
             "power_w": _fmt(row.power_w, 0),
             "clock_mhz": _fmt(row.clock_mhz, 0),
-            "temp_c": _fmt(row.temp_c, 0),
-            "hotspot_c": _fmt(row.hotspot_c, 0),
-            "mem_temp_c": _fmt(row.mem_temp_c, 0),
+            # Ampel-Schwellen für Ampere/RTX 3080 (GDDR6X). Heuristik, je nach Modell anpassbar.
+            "temp_c": _temp_cell(row.temp_c, 70, 80, 84),
+            "hotspot_c": _temp_cell(row.hotspot_c, 90, 100, 108),
+            "mem_temp_c": _temp_cell(row.mem_temp_c, 92, 100, 105),
             "voltage_mv": _fmt(row.voltage_mv, 0),
             "avg_perf": _fmt(row.avg_perf, 1),
             "low_1": _fmt(row.low_1, 1),
