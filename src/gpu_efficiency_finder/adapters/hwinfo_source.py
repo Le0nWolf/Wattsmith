@@ -48,12 +48,14 @@ _VALUE_FORMAT = "<d"
 _VALUE_SIZE = struct.calcsize(_VALUE_FORMAT)
 
 _FPS_LABEL_HINTS = ("framerate", "fps", "frames per second")
+# Spannungs-Label MUSS GPU-Kontext haben (HWiNFO-Speicher enthält ALLE Geräte inkl. CPU/Board).
+_VOLTAGE_REQUIRE = "gpu"
 # Zuerst die TATSÄCHLICHE Kern-Spannung; „VID“ (angeforderte Spannung) nur als Fallback.
-_VOLTAGE_PRIMARY_HINTS = ("gpu core voltage", "core voltage", "kern-spannung", "kernspannung")
-_VOLTAGE_FALLBACK_HINTS = ("gpu vid", "vid", "vddc")
-# Labels, die NICHT die GPU-Core-Spannung sind (Speicher/VRAM/Rails) — ausschließen, sonst
-# trifft z. B. „MVDDC“/„GPU-Speicher-Spannung“ (~1,25–1,35 V, bleibt ~konstant).
-_VOLTAGE_EXCLUDE = ("speicher", "memory", "mvdd", "vram", "leistungsspannung")
+_VOLTAGE_PRIMARY_HINTS = ("core voltage", "kern-spannung", "kernspannung", "core volt")
+_VOLTAGE_FALLBACK_HINTS = ("vid", "vddc")
+# Labels, die NICHT die GPU-Core-Spannung sind — ausschließen (CPU, Speicher/VRAM, Rails),
+# sonst trifft z. B. „CPU-Kernspannung“ oder „MVDDC“/„GPU-Speicher-Spannung“.
+_VOLTAGE_EXCLUDE = ("cpu", "soc", "speicher", "memory", "mvdd", "vram", "leistungsspannung")
 
 _FILE_MAP_READ = 0x0004
 
@@ -193,11 +195,13 @@ class HwinfoSource:
         return raw.decode("latin-1", errors="replace").strip()
 
     def _find_value(
-        self, hints: tuple[str, ...], exclude: tuple[str, ...] = ()
+        self,
+        hints: tuple[str, ...],
+        exclude: tuple[str, ...] = (),
+        require: str | None = None,
     ) -> tuple[float, str, str] | None:
-        """Erstes Reading, dessen User-Label einen ``hints`` (und keinen ``exclude``) enthält.
-
-        Gibt ``(Wert, Einheit, Original-Label)`` zurück.
+        """Erstes Reading, dessen User-Label einen ``hints`` enthält, keinen ``exclude`` und
+        (falls gesetzt) ``require``. Gibt ``(Wert, Einheit, Original-Label)`` zurück.
         """
         buf = self._snapshot()
         if buf is None:
@@ -214,6 +218,8 @@ class HwinfoSource:
                 break
             label = self._decode(buf[base + _LABEL_USER_OFFSET : base + _UNIT_OFFSET])
             low = label.lower()
+            if require is not None and require not in low:
+                continue
             if not any(hint in low for hint in hints):
                 continue
             if any(bad in low for bad in exclude):
@@ -232,9 +238,9 @@ class HwinfoSource:
         Bevorzugt die tatsächliche Kern-Spannung (Speicher-/Rail-Spannungen ausgeschlossen);
         „VID“ nur als Fallback. Loggt EINMAL, welcher Sensor getroffen wurde.
         """
-        found = self._find_value(_VOLTAGE_PRIMARY_HINTS, _VOLTAGE_EXCLUDE) or self._find_value(
-            _VOLTAGE_FALLBACK_HINTS, _VOLTAGE_EXCLUDE
-        )
+        found = self._find_value(
+            _VOLTAGE_PRIMARY_HINTS, _VOLTAGE_EXCLUDE, require=_VOLTAGE_REQUIRE
+        ) or self._find_value(_VOLTAGE_FALLBACK_HINTS, _VOLTAGE_EXCLUDE, require=_VOLTAGE_REQUIRE)
         if found is None:
             return None
         value, unit, label = found
