@@ -18,7 +18,7 @@ import logging
 
 from nicegui import ui
 
-from gpu_efficiency_finder import app
+from gpu_efficiency_finder import __version__, app
 from gpu_efficiency_finder.adapters.nvidia_smi_backend import NvidiaSmiBackend
 from gpu_efficiency_finder.adapters.nvml_backend import NvmlBackend
 from gpu_efficiency_finder.constants import APP_TITLE
@@ -49,7 +49,8 @@ def _reset_power_limit_safety_net() -> None:
 def main() -> None:
     """Richtet Logging ein, baut die UI und startet das native Fenster."""
     setup_logging(logging.INFO)
-    _LOG.info("%s startet …", APP_TITLE)
+    # Versions-Marker im Startlog: so ist sofort erkennbar, ob die aktuelle EXE läuft.
+    _LOG.info("%s v%s startet …", APP_TITLE, __version__)
     atexit.register(_reset_power_limit_safety_net)
     app.create_ui()
     ui.run(
