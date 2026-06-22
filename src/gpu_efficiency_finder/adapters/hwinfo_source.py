@@ -28,7 +28,9 @@ __all__ = ["HwinfoSource"]
 
 _LOG = get_logger(__name__)
 
-_SIGNATURE = b"SiWH"
+# Signatur im Speicher (little-endian Bytes). Die Spec nennt den DWORD-Wert „SiWH“; roh
+# liegen die Bytes umgekehrt als „HWiS“ vor — genau das liest struct mit ``4s``.
+_SIGNATURE = b"HWiS"
 # dwSignature(4) dwVersion(4) dwRevision(4) poll_time(8)
 # dwOffsetOfSensorSection(4) dwSizeOfSensorElement(4) dwNumSensorElements(4)
 # dwOffsetOfReadingSection(4) dwSizeOfReadingElement(4) dwNumReadingElements(4)
@@ -151,6 +153,12 @@ class HwinfoSource:
             fields[7] + fields[8] * fields[9],
             _HEADER_SIZE,
         )
+        # Sicherheitsnetz: bei absurder Größe (defektes Layout) nicht über die Region
+        # hinaus lesen — string_at würde sonst eine Access Violation auslösen.
+        if total <= 0 or total > 64 * 1024 * 1024:
+            k32.UnmapViewOfFile(ctypes.c_void_p(view))
+            k32.CloseHandle(ctypes.c_void_p(handle))
+            raise HwinfoError(f"Unplausible Mapping-Größe ({total} Bytes)")
         self._handle = int(handle)
         self._view = int(view)
         self._total = total

@@ -30,7 +30,7 @@ def _element(label_user: str, unit: str, value: float) -> bytes:
 
 def _buffer(element: bytes) -> bytes:
     """Header (Reading-Section direkt hinter dem Header, 1 Element) + Element."""
-    header = struct.pack(_HEADER_FORMAT, b"SiWH", 1, 1, 0, 0, 0, 0, _HEADER_SIZE, len(element), 1)
+    header = struct.pack(_HEADER_FORMAT, b"HWiS", 1, 1, 0, 0, 0, 0, _HEADER_SIZE, len(element), 1)
     return header + element
 
 
