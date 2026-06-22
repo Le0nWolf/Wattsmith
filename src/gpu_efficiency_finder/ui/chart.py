@@ -40,8 +40,19 @@ def _base_layout() -> dict[str, object]:
     }
 
 
-def _marker(point: OperatingPoint | None, color: str, label: str) -> dict[str, object] | None:
-    """Erzeugt eine plotly-Trace (einzelner Punkt) für einen Betriebspunkt."""
+def _marker(
+    point: OperatingPoint | None,
+    color: str,
+    label: str,
+    *,
+    size: int,
+    symbol: str,
+) -> dict[str, object] | None:
+    """Erzeugt eine plotly-Trace (einzelner Punkt) für einen Betriebspunkt.
+
+    Unterschiedliche Größen/Symbole, damit zusammenfallende Punkte (z. B. Knie == Peak)
+    sichtbar bleiben (der große Ring umschließt das kleinere Symbol).
+    """
     if point is None or point.avg_perf is None:
         return None
     text = f"{label}<br>{point.set_watt:.0f} W ({point.pct_of_default:.0f}% vom Default)"
@@ -52,10 +63,10 @@ def _marker(point: OperatingPoint | None, color: str, label: str) -> dict[str, o
         "type": "scatter",
         "name": label,
         "marker": {
-            "size": 13,
+            "size": size,
             "color": color,
-            "symbol": "diamond",
-            "line": {"width": 1, "color": "#fff"},
+            "symbol": symbol,
+            "line": {"width": 2, "color": "#fff"},
         },
         "hovertext": [text],
         "hoverinfo": "text",
@@ -138,12 +149,13 @@ class EfficiencyChart:
                 }
             )
         recommended = recommendation.recommended if recommendation else None
-        for point, color, label in (
-            (peak, _PEAK_COLOR, "Effizienz-Peak"),
-            (knee, _KNEE_COLOR, "Knie"),
-            (recommended, _REC_COLOR, "Empfehlung"),
+        # Großer offener Ring (Peak) zuerst, damit kleinere Symbole darauf sichtbar bleiben.
+        for point, color, label, size, symbol in (
+            (peak, _PEAK_COLOR, "Effizienz-Peak", 22, "circle-open"),
+            (knee, _KNEE_COLOR, "Knie", 13, "diamond"),
+            (recommended, _REC_COLOR, "Empfehlung", 12, "star"),
         ):
-            trace = _marker(point, color, label)
+            trace = _marker(point, color, label, size=size, symbol=symbol)
             if trace is not None:
                 data.append(trace)
 

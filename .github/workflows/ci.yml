@@ -31,8 +31,26 @@ jobs:
       # nur Rauschen). Gates sind ruff + pytest; pyright bleibt ein optionaler lokaler Check.
       - name: Tests (pytest)
         run: uv run pytest
+      - name: Download PresentMon (für den FPS-Modus ins Bundle)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path assets/presentmon | Out-Null
+          $headers = @{ 'User-Agent' = 'ci'; 'Authorization' = "Bearer $env:GH_TOKEN" }
+          $rel = Invoke-RestMethod -Headers $headers `
+            https://api.github.com/repos/GameTechDev/PresentMon/releases/latest
+          $asset = $rel.assets | Where-Object { $_.name -like 'PresentMon-*-x64.exe' } |
+            Select-Object -First 1
+          if (-not $asset) { throw 'PresentMon-Konsolen-EXE (PresentMon-*-x64.exe) nicht gefunden' }
+          Write-Host "PresentMon-Asset: $($asset.name)"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile assets/presentmon/PresentMon.exe
+          Get-Item assets/presentmon/PresentMon.exe | Format-List Name, Length
       - name: Build EXE
-        run: uv run nicegui-pack --onefile --name GpuEfficiencyFinder src/gpu_efficiency_finder/__main__.py
+        run: >
+          uv run nicegui-pack --onefile --name GpuEfficiencyFinder
+          --add-data "assets/presentmon/PresentMon.exe;assets/presentmon"
+          src/gpu_efficiency_finder/__main__.py
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
