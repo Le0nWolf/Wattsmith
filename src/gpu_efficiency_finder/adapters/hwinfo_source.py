@@ -48,16 +48,12 @@ _VALUE_FORMAT = "<d"
 _VALUE_SIZE = struct.calcsize(_VALUE_FORMAT)
 
 _FPS_LABEL_HINTS = ("framerate", "fps", "frames per second")
-# Zuerst die TATSÄCHLICHE Kern-/VDDC-Spannung; „VID“ (angeforderte Spannung, liegt höher)
-# nur als Fallback, falls kein Kern-Spannungs-Sensor existiert.
-_VOLTAGE_PRIMARY_HINTS = (
-    "gpu core voltage",
-    "core voltage",
-    "kern-spannung",
-    "kernspannung",
-    "vddc",
-)
-_VOLTAGE_FALLBACK_HINTS = ("gpu vid", "vid")
+# Zuerst die TATSÄCHLICHE Kern-Spannung; „VID“ (angeforderte Spannung) nur als Fallback.
+_VOLTAGE_PRIMARY_HINTS = ("gpu core voltage", "core voltage", "kern-spannung", "kernspannung")
+_VOLTAGE_FALLBACK_HINTS = ("gpu vid", "vid", "vddc")
+# Labels, die NICHT die GPU-Core-Spannung sind (Speicher/VRAM/Rails) — ausschließen, sonst
+# trifft z. B. „MVDDC“/„GPU-Speicher-Spannung“ (~1,25–1,35 V, bleibt ~konstant).
+_VOLTAGE_EXCLUDE = ("speicher", "memory", "mvdd", "vram", "leistungsspannung")
 
 _FILE_MAP_READ = 0x0004
 
@@ -72,6 +68,9 @@ class HwinfoSource:
         self._total = 0
         # Test-Injektion: ein statischer Puffer ersetzt das echte Mapping.
         self._static: bytes | None = None
+        self._voltage_logged = (
+            False  # damit der getroffene Spannungs-Sensor nur einmal geloggt wird
+        )
 
     # -- Lifecycle --------------------------------------------------------
 
@@ -193,8 +192,13 @@ class HwinfoSource:
             raw = raw[:end]
         return raw.decode("latin-1", errors="replace").strip()
 
-    def _find_value(self, hints: tuple[str, ...]) -> tuple[float, str] | None:
-        """Erstes Reading, dessen User-Label einen der ``hints`` enthält → (Wert, Einheit)."""
+    def _find_value(
+        self, hints: tuple[str, ...], exclude: tuple[str, ...] = ()
+    ) -> tuple[float, str, str] | None:
+        """Erstes Reading, dessen User-Label einen ``hints`` (und keinen ``exclude``) enthält.
+
+        Gibt ``(Wert, Einheit, Original-Label)`` zurück.
+        """
         buf = self._snapshot()
         if buf is None:
             return None
@@ -208,29 +212,37 @@ class HwinfoSource:
             base = reading_offset + i * reading_size
             if base + _VALUE_OFFSET + _VALUE_SIZE > len(buf):
                 break
-            label = self._decode(buf[base + _LABEL_USER_OFFSET : base + _UNIT_OFFSET]).lower()
-            if not any(hint in label for hint in hints):
+            label = self._decode(buf[base + _LABEL_USER_OFFSET : base + _UNIT_OFFSET])
+            low = label.lower()
+            if not any(hint in low for hint in hints):
+                continue
+            if any(bad in low for bad in exclude):
                 continue
             unit = self._decode(buf[base + _UNIT_OFFSET : base + _VALUE_OFFSET])
             (value,) = struct.unpack(
                 _VALUE_FORMAT, buf[base + _VALUE_OFFSET : base + _VALUE_OFFSET + _VALUE_SIZE]
             )
             if value > 0.0:
-                return float(value), unit
+                return float(value), unit, label
         return None
 
     def read_voltage_mv(self) -> float | None:
         """Aktuelle GPU-Core-Spannung in mV (best-effort) oder ``None`` (wirft nie).
 
-        Bevorzugt die tatsächliche Kern-/VDDC-Spannung; „VID“ nur als Fallback.
+        Bevorzugt die tatsächliche Kern-Spannung (Speicher-/Rail-Spannungen ausgeschlossen);
+        „VID“ nur als Fallback. Loggt EINMAL, welcher Sensor getroffen wurde.
         """
-        found = self._find_value(_VOLTAGE_PRIMARY_HINTS) or self._find_value(
-            _VOLTAGE_FALLBACK_HINTS
+        found = self._find_value(_VOLTAGE_PRIMARY_HINTS, _VOLTAGE_EXCLUDE) or self._find_value(
+            _VOLTAGE_FALLBACK_HINTS, _VOLTAGE_EXCLUDE
         )
         if found is None:
             return None
-        value, unit = found
-        return value if "mv" in unit.lower() else value * 1000.0
+        value, unit, label = found
+        millivolts = value if "mv" in unit.lower() else value * 1000.0
+        if not self._voltage_logged:
+            _LOG.info("HWiNFO-Spannung aus Sensor '%s' = %.0f mV (%s)", label, millivolts, unit)
+            self._voltage_logged = True
+        return millivolts
 
     def window_metrics(self, t_start: float, t_end: float) -> WindowMetrics | None:
         """Aktueller (gemittelter) FPS-Wert von HWiNFO, falls vorhanden — keine Lows."""
