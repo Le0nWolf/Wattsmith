@@ -158,6 +158,8 @@ class SweepEngine:
             low_1=metrics.low_1 if metrics else None,
             low_01=metrics.low_01 if metrics else None,
             voltage_mv=telem.voltage_mv,
+            hotspot_c=telem.hotspot_c,
+            mem_temp_c=telem.mem_temp_c,
         )
 
     async def _cooldown_if_needed(self, idx: int, config: object, h: SweepHooks) -> None:
@@ -214,8 +216,8 @@ class SweepEngine:
     def _averaged_telemetry(self, idx: int) -> Telemetry:
         samples = [self._gpu.read_telemetry(idx) for _ in range(_TELEMETRY_SAMPLES)]
         n = len(samples)
-        # Spannung bevorzugt aus der (HWiNFO-)Spannungsquelle; sonst NVML-Mittel (meist None).
-        voltage = self._read_voltage_mv()
+        # Zusatzsensoren aus der (HWiNFO-)Quelle; Spannung sonst NVML-Mittel (meist None).
+        voltage = self._safe_read(lambda v: v.read_voltage_mv())
         if voltage is None:
             nvml_volts = [s.voltage_mv for s in samples if s.voltage_mv is not None]
             voltage = (sum(nvml_volts) / len(nvml_volts)) if nvml_volts else None
@@ -225,14 +227,16 @@ class SweepEngine:
             temp_c=sum(s.temp_c for s in samples) / n,
             util_pct=sum(s.util_pct for s in samples) / n,
             voltage_mv=voltage,
+            hotspot_c=self._safe_read(lambda v: v.read_hotspot_c()),
+            mem_temp_c=self._safe_read(lambda v: v.read_mem_temp_c()),
         )
 
-    def _read_voltage_mv(self) -> float | None:
-        """Best-effort Spannung aus der optionalen Spannungsquelle (wirft nie)."""
+    def _safe_read(self, fn: Callable[[VoltageSource], float | None]) -> float | None:
+        """Best-effort Lesen aus der optionalen Zusatzsensor-Quelle (wirft nie)."""
         if self._voltage is None:
             return None
         try:
-            return self._voltage.read_voltage_mv()
+            return fn(self._voltage)
         except Exception:
             return None
 

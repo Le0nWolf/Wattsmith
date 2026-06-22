@@ -9,8 +9,9 @@ __all__ = ["VoltageSource"]
 
 @runtime_checkable
 class VoltageSource(Protocol):
-    """Liefert die aktuelle GPU-Core-Spannung (mV) — NVML kann sie auf Consumer-Karten
-    meist nicht; HWiNFO ist die zuverlässige Quelle. Nur lesend; rein optional."""
+    """Liefert GPU-Zusatzsensoren, die NVML auf Consumer-Karten nicht hergibt: Core-Spannung
+    (mV) sowie Hot-Spot- und Speicher-(Junction-)Temperatur (°C). HWiNFO ist die Quelle.
+    Nur lesend; rein optional — jede Methode darf ``None`` liefern."""
 
     def start(self) -> None:
         """Öffnet die Quelle (z. B. HWiNFO-Shared-Memory)."""
@@ -21,5 +22,13 @@ class VoltageSource(Protocol):
         ...
 
     def read_voltage_mv(self) -> float | None:
-        """Momentane GPU-Core-Spannung in mV, oder ``None``, wenn nicht verfügbar."""
+        """Momentane GPU-Core-Spannung in mV, oder ``None``."""
+        ...
+
+    def read_hotspot_c(self) -> float | None:
+        """GPU-Hot-Spot-Temperatur in °C, oder ``None``."""
+        ...
+
+    def read_mem_temp_c(self) -> float | None:
+        """GPU-Speicher-(Junction-)Temperatur in °C, oder ``None``."""
         ...

@@ -48,9 +48,11 @@ class Telemetry:
     clock_mhz: float
     temp_c: float
     util_pct: float
-    # GPU-Core-Spannung in mV, falls auslesbar (NVML liefert sie auf Consumer-Karten oft
-    # nicht — dann None; HWiNFO ist die zuverlässige Quelle).
+    # Zusatzsensoren aus HWiNFO (NVML liefert sie nicht): Core-Spannung in mV, Hot-Spot- und
+    # Speicher-(Junction-)Temperatur in °C. ``None``, wenn keine HWiNFO-Quelle verfügbar.
     voltage_mv: float | None = None
+    hotspot_c: float | None = None
+    mem_temp_c: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +88,8 @@ class SweepRow:
     low_1: float | None = None
     low_01: float | None = None
     voltage_mv: float | None = None
+    hotspot_c: float | None = None
+    mem_temp_c: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

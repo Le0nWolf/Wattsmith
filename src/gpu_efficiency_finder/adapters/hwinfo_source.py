@@ -56,6 +56,9 @@ _VOLTAGE_FALLBACK_HINTS = ("vid", "vddc")
 # Labels, die NICHT die GPU-Core-Spannung sind — ausschließen (CPU, Speicher/VRAM, Rails),
 # sonst trifft z. B. „CPU-Kernspannung“ oder „MVDDC“/„GPU-Speicher-Spannung“.
 _VOLTAGE_EXCLUDE = ("cpu", "soc", "speicher", "memory", "mvdd", "vram", "leistungsspannung")
+# Temperatur-Sensoren (jeweils GPU-Kontext erforderlich, siehe _VOLTAGE_REQUIRE).
+_HOTSPOT_HINTS = ("hot spot", "hotspot", "hot-spot")
+_MEM_TEMP_HINTS = ("sperrschicht", "memory junction", "mem junction", "junction")
 
 _FILE_MAP_READ = 0x0004
 
@@ -70,9 +73,7 @@ class HwinfoSource:
         self._total = 0
         # Test-Injektion: ein statischer Puffer ersetzt das echte Mapping.
         self._static: bytes | None = None
-        self._voltage_logged = (
-            False  # damit der getroffene Spannungs-Sensor nur einmal geloggt wird
-        )
+        self._logged: set[str] = set()  # getroffene Sensoren je Größe nur einmal loggen
 
     # -- Lifecycle --------------------------------------------------------
 
@@ -232,10 +233,17 @@ class HwinfoSource:
                 return float(value), unit, label
         return None
 
+    def _log_once(self, key: str, label: str, value: float, unit: str) -> None:
+        """Loggt pro Größe genau einmal, welcher HWiNFO-Sensor getroffen wurde."""
+        if key in self._logged:
+            return
+        _LOG.info("HWiNFO %s aus Sensor '%s' = %.0f %s", key, label, value, unit)
+        self._logged.add(key)
+
     def read_voltage_mv(self) -> float | None:
         """Aktuelle GPU-Core-Spannung in mV (best-effort) oder ``None`` (wirft nie).
 
-        Bevorzugt die tatsächliche Kern-Spannung (Speicher-/Rail-Spannungen ausgeschlossen);
+        Bevorzugt die tatsächliche Kern-Spannung (Speicher-/Rail-/CPU-Spannungen ausgeschlossen);
         „VID“ nur als Fallback. Loggt EINMAL, welcher Sensor getroffen wurde.
         """
         found = self._find_value(
@@ -245,10 +253,24 @@ class HwinfoSource:
             return None
         value, unit, label = found
         millivolts = value if "mv" in unit.lower() else value * 1000.0
-        if not self._voltage_logged:
-            _LOG.info("HWiNFO-Spannung aus Sensor '%s' = %.0f mV (%s)", label, millivolts, unit)
-            self._voltage_logged = True
+        self._log_once("Spannung", label, millivolts, "mV")
         return millivolts
+
+    def read_hotspot_c(self) -> float | None:
+        """GPU-Hot-Spot-Temperatur in °C (best-effort) oder ``None``."""
+        found = self._find_value(_HOTSPOT_HINTS, require=_VOLTAGE_REQUIRE)
+        if found is None:
+            return None
+        self._log_once("Hotspot", found[2], found[0], "°C")
+        return found[0]
+
+    def read_mem_temp_c(self) -> float | None:
+        """GPU-Speicher-(Junction-)Temperatur in °C (best-effort) oder ``None``."""
+        found = self._find_value(_MEM_TEMP_HINTS, require=_VOLTAGE_REQUIRE)
+        if found is None:
+            return None
+        self._log_once("Speicher-Temp", found[2], found[0], "°C")
+        return found[0]
 
     def window_metrics(self, t_start: float, t_end: float) -> WindowMetrics | None:
         """Aktueller (gemittelter) FPS-Wert von HWiNFO, falls vorhanden — keine Lows."""

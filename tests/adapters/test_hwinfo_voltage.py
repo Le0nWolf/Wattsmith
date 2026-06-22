@@ -63,3 +63,16 @@ def test_non_voltage_label_returns_none() -> None:
 
 def test_no_mapping_returns_none() -> None:
     assert HwinfoSource().read_voltage_mv() is None
+
+
+def test_hotspot_and_mem_temp_require_gpu_context() -> None:
+    # GPU-Sensoren werden gelesen …
+    assert _source_with(_element("GPU-Hot-Spot-Temperatur", "°C", 92.0)).read_hotspot_c() == 92.0
+    src = _source_with(_element("GPU-Speicher Sperrschicht-Temperatur", "°C", 80.0))
+    assert src.read_mem_temp_c() == 80.0
+
+
+def test_cpu_sensors_are_ignored() -> None:
+    # … CPU-Pendants (kein „gpu“ im Label) NICHT.
+    assert _source_with(_element("CPU IOD Hotspot", "°C", 60.0)).read_hotspot_c() is None
+    assert _source_with(_element("CPU-Kernspannung (SVI2 TFN)", "V", 1.2)).read_voltage_mv() is None

@@ -36,6 +36,8 @@ _CSV_HEADER = (
     "power_w",
     "clock_mhz",
     "temp_c",
+    "hotspot_c",
+    "mem_temp_c",
     "voltage_mv",
     "avg_perf",
     "low_1",
@@ -94,6 +96,8 @@ def export_csv(result: SweepResult, path: str | Path) -> None:
                     row.power_w,
                     row.clock_mhz,
                     row.temp_c,
+                    _blank(row.hotspot_c),
+                    _blank(row.mem_temp_c),
                     _blank(row.voltage_mv),
                     _blank(row.avg_perf),
                     _blank(row.low_1),
@@ -123,6 +127,8 @@ def _row_from_dict(data: dict[str, object]) -> SweepRow:
         low_1=_opt_float(data.get("low_1")),
         low_01=_opt_float(data.get("low_01")),
         voltage_mv=_opt_float(data.get("voltage_mv")),
+        hotspot_c=_opt_float(data.get("hotspot_c")),
+        mem_temp_c=_opt_float(data.get("mem_temp_c")),
     )
 
 
