@@ -18,7 +18,7 @@ _HEADER_SIZE = struct.calcsize(_HEADER_FORMAT)
 
 
 def _element(label_user: str, unit: str, value: float) -> bytes:
-    """Reading-Element: type/idx/id (je 4) + labelOrig(128) + labelUser(128) + unit(16) + value(8)."""
+    """Ein Reading-Element nach SM2-Layout (3×4 Header + labelOrig + labelUser + unit + value)."""
     out = bytearray()
     out += struct.pack("<III", 0, 0, 0)
     out += b"\x00" * 128
