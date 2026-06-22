@@ -75,6 +75,10 @@ class PresentMonSource:
             self._process_name,
             "--v1_metrics",
             "--no_console_stats",
+            # Eigener Session-Name + Stop einer evtl. verwaisten gleichnamigen Session, damit
+            # eine hängengebliebene „PresentMon“-ETW-Session den Lauf nicht blockiert.
+            "--session_name",
+            "WattsmithPM",
             "--stop_existing_session",
         ]
         with self._lock:

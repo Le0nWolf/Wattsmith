@@ -36,7 +36,7 @@ def _buffer(element: bytes) -> bytes:
 
 def _source_with(element: bytes) -> HwinfoSource:
     src = HwinfoSource()
-    src._mmap = _buffer(element)  # type: ignore[assignment]  # bytes genügt für reines Slicing
+    src._static = _buffer(element)  # injizierter Puffer statt echtem Shared Memory
     return src
 
 
