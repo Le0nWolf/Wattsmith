@@ -48,6 +48,9 @@ class Telemetry:
     clock_mhz: float
     temp_c: float
     util_pct: float
+    # GPU-Core-Spannung in mV, falls auslesbar (NVML liefert sie auf Consumer-Karten oft
+    # nicht — dann None; HWiNFO ist die zuverlässige Quelle).
+    voltage_mv: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +85,7 @@ class SweepRow:
     avg_perf: float | None = None
     low_1: float | None = None
     low_01: float | None = None
+    voltage_mv: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -296,11 +296,17 @@ class AppController:
     def _on_status(self, message: str, telem: Telemetry | None) -> None:
         # Worker-Thread: nur Strings ablegen, kein UI-Zugriff.
         self._status_msg = message
-        self._telem_str = (
-            f"{telem.power_w:.0f} W · {telem.clock_mhz:.0f} MHz · {telem.temp_c:.0f} °C"
-            if telem is not None
-            else ""
-        )
+        if telem is None:
+            self._telem_str = ""
+            return
+        parts = [
+            f"{telem.power_w:.0f} W",
+            f"{telem.clock_mhz:.0f} MHz",
+            f"{telem.temp_c:.0f} °C",
+        ]
+        if telem.voltage_mv is not None:
+            parts.append(f"{telem.voltage_mv:.0f} mV")
+        self._telem_str = " · ".join(parts)
 
     # -- UI-Updates (im Event-Loop) ---------------------------------------
 

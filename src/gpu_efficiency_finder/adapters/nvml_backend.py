@@ -115,7 +115,30 @@ class NvmlBackend:
             clock_mhz=clock_mhz,
             temp_c=temp_c,
             util_pct=util_pct,
+            voltage_mv=self._read_voltage_mv(nvml, handle),
         )
+
+    @staticmethod
+    def _read_voltage_mv(nvml: ModuleType, handle: object) -> float | None:
+        """Best-effort GPU-Core-Spannung (mV) über NVML-Field-Values.
+
+        Das Feld ist in NVML nicht offiziell für Consumer-GPUs dokumentiert und fehlt auf
+        vielen Karten/Treibern — daher getattr-Guard und großzügiges Abfangen: nicht
+        verfügbar → ``None`` (zuverlässig kommt die Spannung aus HWiNFO).
+        """
+        field_id = getattr(nvml, "NVML_FI_DEV_VOLTAGE", None)
+        get_fields = getattr(nvml, "nvmlDeviceGetFieldValues", None)
+        if field_id is None or get_fields is None:
+            return None
+        try:
+            values = get_fields(handle, [field_id])
+            value = values[0]
+            if getattr(value, "nvmlReturn", 1) != 0:
+                return None
+            millivolts = float(value.value.uiVal)
+        except Exception:
+            return None
+        return millivolts if millivolts > 0 else None
 
     def reset_to_default(self, idx: int) -> None:
         limits = self.get_limits(idx)

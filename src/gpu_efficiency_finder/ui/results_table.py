@@ -39,6 +39,13 @@ _COLUMNS: list[dict[str, object]] = [
     },
     {"name": "temp_c", "label": "Temp °C", "field": "temp_c", "align": "right", "sortable": True},
     {
+        "name": "voltage_mv",
+        "label": "Spannung mV",
+        "field": "voltage_mv",
+        "align": "right",
+        "sortable": True,
+    },
+    {
         "name": "avg_perf",
         "label": "Ø-Perf",
         "field": "avg_perf",
@@ -98,6 +105,7 @@ class ResultsTable:
             "power_w": _fmt(row.power_w, 0),
             "clock_mhz": _fmt(row.clock_mhz, 0),
             "temp_c": _fmt(row.temp_c, 0),
+            "voltage_mv": _fmt(row.voltage_mv, 0),
             "avg_perf": _fmt(row.avg_perf, 1),
             "low_1": _fmt(row.low_1, 1),
             "low_01": _fmt(row.low_01, 1),

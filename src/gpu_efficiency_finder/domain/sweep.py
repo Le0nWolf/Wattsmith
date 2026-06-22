@@ -151,6 +151,7 @@ class SweepEngine:
             avg_perf=metrics.avg_perf if metrics else None,
             low_1=metrics.low_1 if metrics else None,
             low_01=metrics.low_01 if metrics else None,
+            voltage_mv=telem.voltage_mv,
         )
 
     async def _cooldown_if_needed(self, idx: int, config: object, h: SweepHooks) -> None:
@@ -206,11 +207,13 @@ class SweepEngine:
     def _averaged_telemetry(self, idx: int) -> Telemetry:
         samples = [self._gpu.read_telemetry(idx) for _ in range(_TELEMETRY_SAMPLES)]
         n = len(samples)
+        volts = [s.voltage_mv for s in samples if s.voltage_mv is not None]
         return Telemetry(
             power_w=sum(s.power_w for s in samples) / n,
             clock_mhz=sum(s.clock_mhz for s in samples) / n,
             temp_c=sum(s.temp_c for s in samples) / n,
             util_pct=sum(s.util_pct for s in samples) / n,
+            voltage_mv=(sum(volts) / len(volts)) if volts else None,
         )
 
     def _safe_telemetry(self, idx: int) -> Telemetry | None:
