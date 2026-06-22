@@ -14,8 +14,9 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      # Action-Versionen auf die Node-24-fähigen Majors (kein Node-20-Deprecation-Hinweis mehr).
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Install uv
@@ -26,15 +27,14 @@ jobs:
         run: uv run ruff check .
       - name: Format check (ruff)
         run: uv run ruff format --check .
-      - name: Typecheck (pyright)
-        run: uv run pyright
-        continue-on-error: true  # Typecheck-Hinweise nicht hart brechen lassen
+      # Hinweis: pyright läuft NICHT in der CI (strict-Mode erzeugt mit untypisierten UI-Libs
+      # nur Rauschen). Gates sind ruff + pytest; pyright bleibt ein optionaler lokaler Check.
       - name: Tests (pytest)
         run: uv run pytest
       - name: Build EXE
         run: uv run nicegui-pack --onefile --name GpuEfficiencyFinder src/gpu_efficiency_finder/__main__.py
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: GpuEfficiencyFinder-windows
           path: dist/GpuEfficiencyFinder.exe

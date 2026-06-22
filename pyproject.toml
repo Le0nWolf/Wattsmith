@@ -52,5 +52,8 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 [tool.pyright]
 include = ["src", "tests"]
 pythonVersion = "3.12"
-typeCheckingMode = "strict"
+# "standard" statt "strict": die UI-/GPU-Bibliotheken (NiceGUI, plotly, kneed, pynvml) sind
+# untypisiert; strict erzeugt damit nur Rauschen ("Type … is unknown"). pyright ist ein
+# optionaler lokaler Check und NICHT Teil der CI (Gates sind ruff + pytest).
+typeCheckingMode = "standard"
 reportMissingModuleSource = false

@@ -59,12 +59,16 @@ Für einen automatischen UAC-Admin-Prompt eine `.spec` erzeugen und in `EXE(...)
 ### Per GitHub Actions
 
 `.github/workflows/ci.yml` ist **eine** Pipeline auf einem `windows-latest`-Runner mit
-sequentiellen Schritten: `ruff` (Lint + Format) → `pyright` → `pytest` → **erst dann** EXE bauen
+sequentiellen Schritten: `ruff` (Lint + Format) → `pytest` → **erst dann** EXE bauen
 (`nicegui-pack`) → Artifact hochladen. Schlägt ein früherer Schritt fehl, wird die EXE gar nicht
 erst gebaut. Sie läuft bei jedem Push auf `main`, bei Pull Requests, manuell per
 *workflow_dispatch* und bei `v*`-Tags (dann wird die EXE zusätzlich an ein Release gehängt).
 Komplett auf Windows, weil PyInstaller **nicht** cross-kompiliert; die GPU-freien Tests laufen
 dort genauso.
+
+`pyright` ist **nicht** Teil der CI: Im strict-Modus erzeugen die untypisierten UI-/GPU-Libs
+(NiceGUI, plotly, kneed, pynvml) hunderte „Type … is unknown"-Hinweise ohne echten Mehrwert.
+Es bleibt ein optionaler lokaler Check (`uv run pyright`, in `pyproject.toml` auf „standard“).
 
 ---
 
