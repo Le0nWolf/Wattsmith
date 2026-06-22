@@ -138,6 +138,10 @@ class AppController:
         self._eta_total_s = 0.0
         self._eta_start = 0.0
         self._planned_steps = 0
+        # Vom Worker-Thread beschrieben, vom UI-Timer gelesen (keine UI-Calls im Thread!).
+        self._status_msg = ""
+        self._telem_str = ""
+        self._last_rendered_count = -1
         self._build_layout()
 
     # -- Layout -----------------------------------------------------------
@@ -222,6 +226,10 @@ class AppController:
         except Exception as exc:
             _LOG.exception("Sweep fehlgeschlagen")
             ui.notify(f"Sweep fehlgeschlagen: {exc}", type="negative")
+        else:
+            # Endgültiges Rendern HIER (zurück im Event-Loop, gültiger UI-Kontext).
+            if self._result is not None:
+                self._render_result(self._result)
         finally:
             self._end_run()
 
@@ -240,7 +248,9 @@ class AppController:
             on_status=self._on_status,
             should_stop=lambda: self._stop_flag,
         )
-        result = asyncio.run(
+        # WICHTIG: Dieser Code läuft im Worker-Thread — KEINE ui.*-Aufrufe hier (kein Slot-Kontext).
+        # Die Callbacks schreiben nur Daten; das Rendern macht der UI-Timer (_tick) im Event-Loop.
+        self._result = asyncio.run(
             engine.run(
                 sweep_config,
                 gpu_name=gpu_name,
@@ -249,27 +259,21 @@ class AppController:
                 hooks=hooks,
             )
         )
-        self._result = result
-        ui.timer(0.1, lambda: self._render_result(result), once=True)
 
     def _on_row(self, row: SweepRow) -> None:
+        # Worker-Thread: nur Daten anhängen, kein UI-Zugriff.
         self._rows.append(row)
-        snapshot = list(self._rows)
-        ui.timer(0.05, lambda: self._render_live(snapshot), once=True)
 
     def _on_status(self, message: str, telem: Telemetry | None) -> None:
-        text = (
+        # Worker-Thread: nur Strings ablegen, kein UI-Zugriff.
+        self._status_msg = message
+        self._telem_str = (
             f"{telem.power_w:.0f} W · {telem.clock_mhz:.0f} MHz · {telem.temp_c:.0f} °C"
             if telem is not None
             else ""
         )
-        ui.timer(0.05, lambda: self._render_status(message, text), once=True)
 
     # -- UI-Updates (im Event-Loop) ---------------------------------------
-
-    def _render_status(self, message: str, telem: str) -> None:
-        self._status.set_text(message)
-        self._telemetry.set_text(telem)
 
     def _render_live(self, rows: list[SweepRow]) -> None:
         self._table.update(rows)
@@ -387,17 +391,23 @@ class AppController:
         self._running = True
         self._stop_flag = False
         self._rows = []
+        self._result = None
+        self._status_msg = ""
+        self._telem_str = ""
+        self._last_rendered_count = -1
         self._table.clear()
         self._recommendation.set_text("")
         self._start_btn.disable()
         self._stop_btn.enable()
-        self._start_eta(sweep_config)
+        self._start_polling(sweep_config)
 
-    def _start_eta(self, sweep_config: SweepConfig) -> None:
-        """Schätzt die Gesamtdauer und startet den Live-Countdown.
+    def _start_polling(self, sweep_config: SweepConfig) -> None:
+        """Schätzt die Gesamtdauer und startet den UI-Timer, der den Worker-Zustand rendert.
 
-        Schätzung = (Stufen + ggf. Baseline-Gegenmessung) × (Aufwärm- + Messdauer).
-        Abkühlpausen sind nicht enthalten (variabel) — daher „mind."-Charakter.
+        Schätzung = (Stufen + ggf. Baseline-Gegenmessung) × (Aufwärm- + Messdauer);
+        Abkühlpausen sind nicht enthalten (variabel) — daher untere Schranke.
+        Der Timer läuft im Event-Loop (gültiger UI-Kontext) und pollt die vom Worker-Thread
+        geschriebenen Daten — so werden UI-Elemente NIE aus dem Background-Thread erzeugt.
         """
         steps = sweep_config.steps()
         per_step = sweep_config.settle_s + sweep_config.measure_s
@@ -412,18 +422,26 @@ class AppController:
             f"{self._eta_total_s / 60.0:.1f} min (ohne Abkühlpausen).",
             type="info",
         )
-        self._eta_timer = ui.timer(1.0, self._tick_eta)
+        self._eta_timer = ui.timer(0.5, self._tick)
 
-    def _tick_eta(self) -> None:
-        if not self._running or self._eta_total_s <= 0:
+    def _tick(self) -> None:
+        """Läuft im Event-Loop: spiegelt den Worker-Zustand in die UI (Status, Tabelle, ETA)."""
+        if not self._running:
             return
-        elapsed = time.monotonic() - self._eta_start
-        remaining = max(0.0, self._eta_total_s - elapsed)
-        self._progress.value = min(1.0, elapsed / self._eta_total_s)
-        self._eta.set_text(
-            f"{len(self._rows)}/{self._planned_steps} Stufen gemessen · "
-            f"noch ca. {_format_mmss(remaining)} (Schätzung)"
-        )
+        self._status.set_text(self._status_msg)
+        self._telemetry.set_text(self._telem_str)
+        count = len(self._rows)
+        if count != self._last_rendered_count:
+            self._render_live(list(self._rows))
+            self._last_rendered_count = count
+        if self._eta_total_s > 0:
+            elapsed = time.monotonic() - self._eta_start
+            remaining = max(0.0, self._eta_total_s - elapsed)
+            self._progress.value = min(1.0, elapsed / self._eta_total_s)
+            self._eta.set_text(
+                f"{count}/{self._planned_steps} Stufen gemessen · "
+                f"noch ca. {_format_mmss(remaining)} (Schätzung)"
+            )
 
     def _end_run(self) -> None:
         self._running = False
