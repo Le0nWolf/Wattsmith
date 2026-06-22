@@ -76,3 +76,9 @@ def test_cpu_sensors_are_ignored() -> None:
     # … CPU-Pendants (kein „gpu“ im Label) NICHT.
     assert _source_with(_element("CPU IOD Hotspot", "°C", 60.0)).read_hotspot_c() is None
     assert _source_with(_element("CPU-Kernspannung (SVI2 TFN)", "V", 1.2)).read_voltage_mv() is None
+
+
+def test_videotakt_not_mistaken_for_voltage() -> None:
+    # „GPU-Videotakt“ matcht zwar den Fallback-Hint „vid“, hat aber Einheit MHz → kein Volt.
+    src = _source_with(_element("GPU-Videotakt", "MHz", 1350.0))
+    assert src.read_voltage_mv() is None

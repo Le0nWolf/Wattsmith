@@ -200,9 +200,11 @@ class HwinfoSource:
         hints: tuple[str, ...],
         exclude: tuple[str, ...] = (),
         require: str | None = None,
+        units: tuple[str, ...] = (),
     ) -> tuple[float, str, str] | None:
         """Erstes Reading, dessen User-Label einen ``hints`` enthält, keinen ``exclude`` und
-        (falls gesetzt) ``require``. Gibt ``(Wert, Einheit, Original-Label)`` zurück.
+        (falls gesetzt) ``require`` — und dessen Einheit (falls ``units`` gesetzt) passt.
+        Gibt ``(Wert, Einheit, Original-Label)`` zurück.
         """
         buf = self._snapshot()
         if buf is None:
@@ -226,6 +228,8 @@ class HwinfoSource:
             if any(bad in low for bad in exclude):
                 continue
             unit = self._decode(buf[base + _UNIT_OFFSET : base + _VALUE_OFFSET])
+            if units and not any(u in unit.lower() for u in units):
+                continue
             (value,) = struct.unpack(
                 _VALUE_FORMAT, buf[base + _VALUE_OFFSET : base + _VALUE_OFFSET + _VALUE_SIZE]
             )
@@ -247,8 +251,10 @@ class HwinfoSource:
         „VID“ nur als Fallback. Loggt EINMAL, welcher Sensor getroffen wurde.
         """
         found = self._find_value(
-            _VOLTAGE_PRIMARY_HINTS, _VOLTAGE_EXCLUDE, require=_VOLTAGE_REQUIRE
-        ) or self._find_value(_VOLTAGE_FALLBACK_HINTS, _VOLTAGE_EXCLUDE, require=_VOLTAGE_REQUIRE)
+            _VOLTAGE_PRIMARY_HINTS, _VOLTAGE_EXCLUDE, require=_VOLTAGE_REQUIRE, units=("v",)
+        ) or self._find_value(
+            _VOLTAGE_FALLBACK_HINTS, _VOLTAGE_EXCLUDE, require=_VOLTAGE_REQUIRE, units=("v",)
+        )
         if found is None:
             return None
         value, unit, label = found
@@ -258,7 +264,7 @@ class HwinfoSource:
 
     def read_hotspot_c(self) -> float | None:
         """GPU-Hot-Spot-Temperatur in °C (best-effort) oder ``None``."""
-        found = self._find_value(_HOTSPOT_HINTS, require=_VOLTAGE_REQUIRE)
+        found = self._find_value(_HOTSPOT_HINTS, require=_VOLTAGE_REQUIRE, units=("c",))
         if found is None:
             return None
         self._log_once("Hotspot", found[2], found[0], "°C")
@@ -266,7 +272,7 @@ class HwinfoSource:
 
     def read_mem_temp_c(self) -> float | None:
         """GPU-Speicher-(Junction-)Temperatur in °C (best-effort) oder ``None``."""
-        found = self._find_value(_MEM_TEMP_HINTS, require=_VOLTAGE_REQUIRE)
+        found = self._find_value(_MEM_TEMP_HINTS, require=_VOLTAGE_REQUIRE, units=("c",))
         if found is None:
             return None
         self._log_once("Speicher-Temp", found[2], found[0], "°C")
