@@ -15,8 +15,10 @@ class SweepConfig(BaseModel):
     """Numerische Sweep-Parameter und Toleranzen."""
 
     gpu_index: int = Field(0, ge=0)
-    start_pct: int = Field(100, ge=20, le=100)
-    end_pct: int = Field(50, ge=20, le=100)
+    # Obergrenze >100 %, damit das Overclock-Power-Limit der Karte genutzt werden kann
+    # (z. B. 117 %). Der Treiber/das Clamping begrenzt ohnehin auf das erlaubte [min, max].
+    start_pct: int = Field(100, ge=20, le=200)
+    end_pct: int = Field(50, ge=5, le=100)
     step_pct: int = Field(5, ge=1, le=25)
     settle_s: float = Field(8.0, ge=2, le=180)
     # Obergrenze großzügig, damit das Messfenster die Dauer eines kompletten Benchmark-Loops

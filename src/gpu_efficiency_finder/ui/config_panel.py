@@ -60,12 +60,12 @@ _HWINFO_HINT = (
 # Tooltip-Texte je Feld (echte Umlaute, anfängertauglich formuliert).
 _T_GPU = "Welche NVIDIA-GPU gesteuert und gemessen wird. Bei nur einer Karte einfach GPU 0."
 _T_START = (
-    "Höchstes Power-Limit (in % vom Hersteller-Default), bei dem der Sweep startet. "
-    "100 % = volle Leistung; dient als Baseline-Referenz für alle Verluste."
+    "Höchstes Power-Limit (in % vom Hersteller-Default), bei dem der Sweep startet, = Baseline. "
+    ">100 % nutzt das Overclock-Limit der Karte. „Max“ füllt das Karten-Maximum automatisch ein."
 )
 _T_END = (
-    "Niedrigstes Power-Limit (in % vom Default), bis zu dem heruntergefahren wird. "
-    "50 % ist ein guter Startwert; viel tiefer lässt der Treiber meist nicht zu."
+    "Niedrigstes Power-Limit (in % vom Default), bis zu dem heruntergefahren wird. „Min“ füllt "
+    "das Karten-Minimum ein. Tiefer als der Treiber erlaubt geht nicht (wird geclampt)."
 )
 _T_STEP = (
     "Schrittweite zwischen den Stufen in %. Kleiner = feinere Kurve, aber längerer Lauf "
@@ -172,8 +172,12 @@ class ConfigPanel:
         self,
         gpus: Sequence[GpuInfo],
         on_pick_exe: Callable[[], Awaitable[None]] | None = None,
+        on_fill_max: Callable[[], Awaitable[None]] | None = None,
+        on_fill_min: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._on_pick_exe = on_pick_exe
+        self._on_fill_max = on_fill_max
+        self._on_fill_min = on_fill_min
         self._gpu_options = {g.index: f"GPU {g.index}: {g.name}" for g in gpus}
         default_idx = next(iter(self._gpu_options), 0)
         with ui.card().classes("w-full").props("dark"):
@@ -212,8 +216,18 @@ class ConfigPanel:
     # -- Eingabe-Gruppen --------------------------------------------------
 
     def _build_sweep_inputs(self) -> None:
-        self._start = _num("Start %", 100, _T_START, min=20, max=100, step=5)
-        self._end = _num("Ende %", 50, _T_END, min=20, max=100, step=5)
+        with ui.row().classes("w-full items-center no-wrap"):
+            self._start = ui.number("Start %", value=100, min=20, max=200, step=5).classes("grow")
+            ui.button("Max", on_click=self._on_fill_max).props("flat dense").tooltip(
+                "Auf das Power-Limit-Maximum der Karte setzen (Overclock-Limit, z. B. 117 %)"
+            )
+            _info(_T_START)
+        with ui.row().classes("w-full items-center no-wrap"):
+            self._end = ui.number("Ende %", value=50, min=5, max=100, step=5).classes("grow")
+            ui.button("Min", on_click=self._on_fill_min).props("flat dense").tooltip(
+                "Auf das Power-Limit-Minimum der Karte setzen"
+            )
+            _info(_T_END)
         self._step = _num("Schritt %", 5, _T_STEP, min=1, max=25, step=1)
         self._watt_steps = _switch("Watt-für-Watt (feiner, langsamer)", False, _T_WATT_STEPS)
         self._watt_step = _num("Watt-Schritt", 5, _T_WATT_STEP, min=1, max=50, step=1)
@@ -274,6 +288,14 @@ class ConfigPanel:
     def set_benchmark_exe(self, path: str) -> None:
         """Setzt den EXE-Pfad (vom Datei-Dialog des Controllers aufgerufen)."""
         self._bench_exe.value = path
+
+    def set_start_pct(self, pct: int) -> None:
+        """Setzt Start % (vom „Max“-Button des Controllers, aus den Karten-Grenzen)."""
+        self._start.value = pct
+
+    def set_end_pct(self, pct: int) -> None:
+        """Setzt Ende % (vom „Min“-Button des Controllers, aus den Karten-Grenzen)."""
+        self._end.value = pct
 
     def _build_presentmon_inputs(self) -> None:
         ui.separator()

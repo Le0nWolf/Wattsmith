@@ -205,7 +205,12 @@ class AppController:
             ui.markdown(_HELP_MD)
         with ui.row().classes("w-full no-wrap"):
             with ui.column().classes("w-1/3"):
-                self._panel = ConfigPanel(self._gpus, on_pick_exe=self._pick_exe)
+                self._panel = ConfigPanel(
+                    self._gpus,
+                    on_pick_exe=self._pick_exe,
+                    on_fill_max=self._fill_max_pct,
+                    on_fill_min=self._fill_min_pct,
+                )
                 self._build_buttons()
             with ui.column().classes("w-2/3"):
                 self._status = ui.label("Bereit.").classes("text-sm")
@@ -382,6 +387,35 @@ class AppController:
                 "Keine Datei gewählt (oder Dialog nicht verfügbar — Pfad bitte manuell eintippen).",
                 type="warning",
             )
+
+    def _limit_pcts(self) -> tuple[int, int] | None:
+        """(max %, min %) der gewählten GPU aus den NVML-Grenzen; None, wenn nicht lesbar."""
+        try:
+            limits = self._backend.get_limits(self._panel.read_gpu_index())
+        except Exception:
+            return None
+        if limits.default_w <= 0:
+            return None
+        return (
+            round(limits.max_w / limits.default_w * 100),
+            round(limits.min_w / limits.default_w * 100),
+        )
+
+    async def _fill_max_pct(self) -> None:
+        pcts = self._limit_pcts()
+        if pcts is None:
+            ui.notify("Karten-Grenzen nicht lesbar (keine GPU?).", type="warning")
+            return
+        self._panel.set_start_pct(pcts[0])
+        ui.notify(f"Start auf Karten-Maximum gesetzt: {pcts[0]} %.", type="positive")
+
+    async def _fill_min_pct(self) -> None:
+        pcts = self._limit_pcts()
+        if pcts is None:
+            ui.notify("Karten-Grenzen nicht lesbar (keine GPU?).", type="warning")
+            return
+        self._panel.set_end_pct(pcts[1])
+        ui.notify(f"Ende auf Karten-Minimum gesetzt: {pcts[1]} %.", type="positive")
 
     async def _on_apply(self) -> None:
         rec = self._result.recommendation if self._result else None
