@@ -29,7 +29,7 @@ from gpu_efficiency_finder.infra.persistence import export_csv, load_run, save_r
 from gpu_efficiency_finder.infra.presentmon_bundle import resolve_presentmon_path
 from gpu_efficiency_finder.logging_setup import get_logger
 from gpu_efficiency_finder.models import GpuInfo, SweepResult, SweepRow, Telemetry
-from gpu_efficiency_finder.ports import BenchmarkRunner, GpuBackend, PerfSource
+from gpu_efficiency_finder.ports import BenchmarkRunner, GpuBackend, PerfSource, VoltageSource
 from gpu_efficiency_finder.ui.chart import EfficiencyChart
 from gpu_efficiency_finder.ui.config_panel import ConfigPanel
 from gpu_efficiency_finder.ui.results_table import ResultsTable
@@ -124,6 +124,19 @@ def build_benchmark(source_config: SourceConfig) -> BenchmarkRunner | None:
     return ProcessBenchmarkRunner(
         exe, source_config.benchmark_args, source_config.benchmark_warmup_s
     )
+
+
+def build_voltage_source(source_config: SourceConfig) -> VoltageSource | None:
+    """HWiNFO-Spannungsquelle, wenn aktiviert — sonst ``None`` (Spannung bleibt leer).
+
+    Eigene HwinfoSource-Instanz nur fürs Spannungslesen, unabhängig vom Mess-Modus. Läuft
+    HWiNFO nicht, scheitert ``start()`` in der Engine still und die Spannung bleibt ``None``.
+    """
+    if not source_config.read_hwinfo_voltage:
+        return None
+    if source_config.hwinfo_shared_mem:
+        return HwinfoSource(source_config.hwinfo_shared_mem)
+    return HwinfoSource()
 
 
 _FileTypes = list[tuple[str, str]]
@@ -264,12 +277,15 @@ class AppController:
         try:
             perf = build_perf_source(source_config, self._backend)
             benchmark = build_benchmark(source_config)
+            voltage = build_voltage_source(source_config)
         except GpuEfficiencyError as exc:
             ui.notify(str(exc), type="negative")
             return
         self._begin_run(sweep_config)
         try:
-            await run.io_bound(self._run_sweep_sync, sweep_config, source_config, perf, benchmark)
+            await run.io_bound(
+                self._run_sweep_sync, sweep_config, source_config, perf, benchmark, voltage
+            )
         except GpuPermissionError:
             ui.notify("Bitte die App als Administrator starten.", type="negative")
         except GpuEfficiencyError as exc:
@@ -290,10 +306,11 @@ class AppController:
         source_config: SourceConfig,
         perf: PerfSource,
         benchmark: BenchmarkRunner | None,
+        voltage: VoltageSource | None,
     ) -> None:
         """Läuft im Worker-Thread (run.io_bound); fährt die async Engine über asyncio.run."""
         gpu_name = next((g.name for g in self._gpus if g.index == sweep_config.gpu_index), "")
-        engine = SweepEngine(self._backend, perf, benchmark)
+        engine = SweepEngine(self._backend, perf, benchmark, voltage)
         hooks = SweepHooks(
             on_row=self._on_row,
             on_status=self._on_status,

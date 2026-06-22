@@ -44,12 +44,15 @@ _HEADER_SIZE = struct.calcsize(_HEADER_FORMAT)
 # szLabelOrig(128) szLabelUser(128) szUnit(16) Value(double) … (Rest ignoriert).
 _LABEL_USER_OFFSET = 4 + 4 + 4 + 128
 _LABEL_LEN = 128
+_UNIT_OFFSET = _LABEL_USER_OFFSET + _LABEL_LEN
 _UNIT_LEN = 16
-_VALUE_OFFSET = _LABEL_USER_OFFSET + _LABEL_LEN + _UNIT_LEN
+_VALUE_OFFSET = _UNIT_OFFSET + _UNIT_LEN
 _VALUE_FORMAT = "<d"
 
 # Label-Teilstrings, die auf eine FPS-/Framerate-Sensorzeile hindeuten (case-insensitiv).
 _FPS_LABEL_HINTS = ("framerate", "fps", "frames per second")
+# Label-Teilstrings für die GPU-Core-Spannung (case-insensitiv).
+_VOLTAGE_LABEL_HINTS = ("gpu core voltage", "gpu voltage", "core voltage", "vddc", "gpu vid")
 
 
 class HwinfoSource:
@@ -125,6 +128,40 @@ class HwinfoSource:
             (value,) = struct.unpack(_VALUE_FORMAT, value_raw)
             if value > 0.0:
                 return float(value)
+        return None
+
+    def read_voltage_mv(self) -> float | None:
+        """Aktuelle GPU-Core-Spannung in mV (best-effort) oder ``None``.
+
+        Scannt die Readings nach einem Spannungs-Label der GPU. HWiNFO liefert die Spannung
+        i. d. R. in Volt → wird zu mV skaliert (Einheit „mV“ wird nicht erneut skaliert).
+        Wirft nie — bei Problemen/fehlendem Mapping ``None``.
+        """
+        buf = self._mmap
+        if buf is None:
+            return None
+        try:
+            reading_offset, reading_size, reading_count = self._read_header(buf)
+        except HwinfoError:
+            return None
+        value_size = struct.calcsize(_VALUE_FORMAT)
+        if reading_size < _VALUE_OFFSET + value_size:
+            return None
+        for i in range(reading_count):
+            base = reading_offset + i * reading_size
+            label = self._decode_label(
+                buf[base + _LABEL_USER_OFFSET : base + _LABEL_USER_OFFSET + _LABEL_LEN]
+            ).lower()
+            if not any(hint in label for hint in _VOLTAGE_LABEL_HINTS):
+                continue
+            unit = self._decode_label(buf[base + _UNIT_OFFSET : base + _UNIT_OFFSET + _UNIT_LEN])
+            value_raw = buf[base + _VALUE_OFFSET : base + _VALUE_OFFSET + value_size]
+            if len(value_raw) < value_size:
+                continue
+            (value,) = struct.unpack(_VALUE_FORMAT, value_raw)
+            if value <= 0.0:
+                continue
+            return float(value) if "mv" in unit.lower() else float(value) * 1000.0
         return None
 
     def window_metrics(self, t_start: float, t_end: float) -> WindowMetrics | None:

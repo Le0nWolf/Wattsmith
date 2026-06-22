@@ -111,6 +111,9 @@ class SourceConfig(BaseModel):
 
     # HWiNFO
     hwinfo_shared_mem: str | None = None  # None → Standardname
+    # GPU-Core-Spannung pro Stufe aus HWiNFO mitlesen (unabhängig vom Mess-Modus). Braucht
+    # laufendes HWiNFO mit aktivem Shared Memory; ist es aus, bleibt die Spannung einfach leer.
+    read_hwinfo_voltage: bool = True
 
     @model_validator(mode="after")
     def _presentmon_needs_process(self) -> SourceConfig:

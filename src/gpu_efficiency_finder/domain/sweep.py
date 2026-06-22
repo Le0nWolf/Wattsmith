@@ -21,7 +21,7 @@ from gpu_efficiency_finder.models import (
     SweepRow,
     Telemetry,
 )
-from gpu_efficiency_finder.ports import BenchmarkRunner, GpuBackend, PerfSource
+from gpu_efficiency_finder.ports import BenchmarkRunner, GpuBackend, PerfSource, VoltageSource
 
 __all__ = ["SweepEngine", "SweepHooks"]
 
@@ -59,10 +59,12 @@ class SweepEngine:
         gpu: GpuBackend,
         perf: PerfSource,
         benchmark: BenchmarkRunner | None = None,
+        voltage: VoltageSource | None = None,
     ) -> None:
         self._gpu = gpu
         self._perf = perf
         self._benchmark = benchmark
+        self._voltage = voltage
 
     async def run(
         self,
@@ -90,6 +92,7 @@ class SweepEngine:
         rows: list[SweepRow] = []
         aborted = False
         self._benchmark_start(h)
+        self._voltage_start()
         self._perf.start()
         try:
             for watt in order:
@@ -211,14 +214,39 @@ class SweepEngine:
     def _averaged_telemetry(self, idx: int) -> Telemetry:
         samples = [self._gpu.read_telemetry(idx) for _ in range(_TELEMETRY_SAMPLES)]
         n = len(samples)
-        volts = [s.voltage_mv for s in samples if s.voltage_mv is not None]
+        # Spannung bevorzugt aus der (HWiNFO-)Spannungsquelle; sonst NVML-Mittel (meist None).
+        voltage = self._read_voltage_mv()
+        if voltage is None:
+            nvml_volts = [s.voltage_mv for s in samples if s.voltage_mv is not None]
+            voltage = (sum(nvml_volts) / len(nvml_volts)) if nvml_volts else None
         return Telemetry(
             power_w=sum(s.power_w for s in samples) / n,
             clock_mhz=sum(s.clock_mhz for s in samples) / n,
             temp_c=sum(s.temp_c for s in samples) / n,
             util_pct=sum(s.util_pct for s in samples) / n,
-            voltage_mv=(sum(volts) / len(volts)) if volts else None,
+            voltage_mv=voltage,
         )
+
+    def _read_voltage_mv(self) -> float | None:
+        """Best-effort Spannung aus der optionalen Spannungsquelle (wirft nie)."""
+        if self._voltage is None:
+            return None
+        try:
+            return self._voltage.read_voltage_mv()
+        except Exception:
+            return None
+
+    def _voltage_start(self) -> None:
+        """Öffnet die optionale Spannungsquelle best-effort; bei Fehler wird sie deaktiviert."""
+        if self._voltage is None:
+            return
+        try:
+            self._voltage.start()
+            _log.info("Spannungsquelle (HWiNFO) aktiv.")
+        except Exception as exc:
+            # Optional: Sweep läuft auch ohne Spannung weiter.
+            _log.warning("Spannungsquelle nicht verfügbar (%s) — Spannung bleibt leer.", exc)
+            self._voltage = None
 
     def _safe_telemetry(self, idx: int) -> Telemetry | None:
         try:
@@ -237,6 +265,11 @@ class SweepEngine:
             self._perf.stop()
         except Exception:
             _log.exception("PerfSource.stop() fehlgeschlagen")
+        if self._voltage is not None:
+            try:
+                self._voltage.stop()
+            except Exception:
+                _log.exception("VoltageSource.stop() fehlgeschlagen")
         if self._benchmark is not None:
             try:
                 self._benchmark.stop()

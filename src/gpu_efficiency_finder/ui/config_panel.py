@@ -134,6 +134,11 @@ _T_WARMUP = (
 )
 _T_PM_PATH = "Pfad zur PresentMon-Konsolen-EXE. Leer = die in der App gebündelte Version nutzen."
 _T_HWINFO_MEM = "Name des HWiNFO-Shared-Memory. Leer = Standard (Global\\HWiNFO_SENS_SM2)."
+_T_HWINFO_VOLTAGE = (
+    "Liest die GPU-Core-Spannung (mV) pro Stufe aus HWiNFO mit — unabhängig vom Mess-Modus, "
+    "ideal fürs Undervolting. Braucht laufendes HWiNFO + aktiven Shared Memory; sonst bleibt "
+    "die Spalte „Spannung“ leer (NVML gibt sie auf Consumer-Karten nicht her)."
+)
 
 
 def _info(text: str) -> None:
@@ -308,6 +313,7 @@ class ConfigPanel:
         ui.separator()
         ui.label("HWiNFO").classes("font-bold")
         self._hwinfo_mem = _txt("Shared-Memory-Name (leer = Standard)", _T_HWINFO_MEM)
+        self._hwinfo_voltage = _switch("Spannung aus HWiNFO mitlesen", True, _T_HWINFO_VOLTAGE)
         ui.label(_HWINFO_HINT).classes("text-xs text-grey")
 
     # -- Auslesen ---------------------------------------------------------
@@ -349,6 +355,7 @@ class ConfigPanel:
                 benchmark_args=str(self._bench_args.value or "").strip(),
                 benchmark_warmup_s=float(self._warmup.value),
                 hwinfo_shared_mem=_blank_to_none(self._hwinfo_mem.value),
+                read_hwinfo_voltage=bool(self._hwinfo_voltage.value),
             )
         except ValidationError as exc:
             return _format_validation_error(exc)
