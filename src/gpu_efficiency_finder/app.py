@@ -126,26 +126,44 @@ def build_benchmark(source_config: SourceConfig) -> BenchmarkRunner | None:
     )
 
 
-def _open_file_dialog() -> str | None:
-    """Öffnet einen nativen „Datei öffnen“-Dialog (tkinter) und liefert den gewählten Pfad.
+_FileTypes = list[tuple[str, str]]
 
-    Läuft serverseitig auf demselben Rechner wie der Browser (lokale App). Ist tkinter nicht
-    verfügbar (z. B. nicht gebündelt), wird ``None`` zurückgegeben — der Pfad lässt sich dann
-    weiterhin manuell eintippen.
-    """
+
+def _open_dialog(filetypes: _FileTypes, title: str) -> str | None:
+    """Nativer „Öffnen“-Dialog (tkinter), serverseitig auf demselben Rechner. ``None`` bei
+    Abbruch oder wenn tkinter nicht verfügbar ist."""
     try:
         import tkinter as tk
         from tkinter import filedialog
     except Exception:
-        # tkinter optional/nicht gebündelt → sauberer Fallback auf manuelle Eingabe.
         return None
     try:
         root = tk.Tk()
         root.withdraw()
         root.attributes("-topmost", True)
-        path = filedialog.askopenfilename(
-            title="Benchmark-EXE auswählen",
-            filetypes=[("Programme", "*.exe"), ("Alle Dateien", "*.*")],
+        path = filedialog.askopenfilename(title=title, filetypes=filetypes)
+        root.destroy()
+    except Exception:
+        return None
+    return path or None
+
+
+def _save_dialog(initialfile: str, defaultextension: str, filetypes: _FileTypes) -> str | None:
+    """Nativer „Speichern unter“-Dialog (tkinter). ``None`` bei Abbruch/Nichtverfügbarkeit."""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception:
+        return None
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        path = filedialog.asksaveasfilename(
+            title="Speichern unter",
+            initialfile=initialfile,
+            defaultextension=defaultextension,
+            filetypes=filetypes,
         )
         root.destroy()
     except Exception:
@@ -198,7 +216,6 @@ class AppController:
                 self._chart = EfficiencyChart()
                 self._table = ResultsTable()
                 self._recommendation = ui.label("").classes("text-sm")
-                self._path = ui.input("Datei-Pfad (CSV/JSON)").classes("w-full")
         if not self._gpus:
             # Keine NVIDIA-GPU/Treiber: Sweep deaktivieren statt später eine Exception
             # zu werfen. Der Hinweis-Banner erklärt es; die UI bleibt voll bedienbar.
@@ -352,7 +369,11 @@ class AppController:
 
     async def _pick_exe(self) -> None:
         """Öffnet den Datei-Dialog (im Worker-Thread, da blockierend) und setzt den EXE-Pfad."""
-        path = await run.io_bound(_open_file_dialog)
+        path = await run.io_bound(
+            _open_dialog,
+            [("Programme", "*.exe"), ("Alle Dateien", "*.*")],
+            "Benchmark-EXE auswählen",
+        )
         if path:
             self._panel.set_benchmark_exe(path)
             ui.notify(f"Benchmark-EXE gewählt: {path}", type="positive")
@@ -390,14 +411,15 @@ class AppController:
         else:
             ui.notify(success_msg, type="positive")
 
-    def _on_export_csv(self) -> None:
+    async def _on_export_csv(self) -> None:
         if self._result is None:
             ui.notify("Kein Ergebnis zum Exportieren.", type="warning")
             return
-        path = (self._path.value or "").strip()
+        path = await run.io_bound(
+            _save_dialog, "wattsmith_sweep.csv", ".csv", [("CSV", "*.csv"), ("Alle Dateien", "*.*")]
+        )
         if not path:
-            ui.notify("Bitte einen Datei-Pfad angeben.", type="warning")
-            return
+            return  # Abgebrochen.
         try:
             export_csv(self._result, path)
         except OSError as exc:
@@ -405,14 +427,18 @@ class AppController:
         else:
             ui.notify(f"CSV exportiert: {path}", type="positive")
 
-    def _on_save(self) -> None:
+    async def _on_save(self) -> None:
         if self._result is None:
             ui.notify("Kein Ergebnis zum Speichern.", type="warning")
             return
-        path = (self._path.value or "").strip()
+        path = await run.io_bound(
+            _save_dialog,
+            "wattsmith_sweep.json",
+            ".json",
+            [("Run-JSON", "*.json"), ("Alle Dateien", "*.*")],
+        )
         if not path:
-            ui.notify("Bitte einen Datei-Pfad angeben.", type="warning")
-            return
+            return  # Abgebrochen.
         try:
             save_run(self._result, path)
         except OSError as exc:
@@ -420,11 +446,12 @@ class AppController:
         else:
             ui.notify(f"Run gespeichert: {path}", type="positive")
 
-    def _on_load(self) -> None:
-        path = (self._path.value or "").strip()
+    async def _on_load(self) -> None:
+        path = await run.io_bound(
+            _open_dialog, [("Run-JSON", "*.json"), ("Alle Dateien", "*.*")], "Run laden"
+        )
         if not path:
-            ui.notify("Bitte einen Datei-Pfad angeben.", type="warning")
-            return
+            return  # Abgebrochen.
         try:
             result = load_run(path)
         except (OSError, ValueError) as exc:
