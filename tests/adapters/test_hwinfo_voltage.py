@@ -45,6 +45,12 @@ def test_reads_gpu_core_voltage_volts_to_millivolts() -> None:
     assert src.read_voltage_mv() == pytest.approx(900.0)
 
 
+def test_german_label_gpu_kern_spannung() -> None:
+    # HWiNFO auf Deutsch: „GPU-Kern-Spannung“, 0,85 V → 850 mV.
+    src = _source_with(_element("GPU-Kern-Spannung", "V", 0.85))
+    assert src.read_voltage_mv() == pytest.approx(850.0)
+
+
 def test_millivolt_unit_is_not_rescaled() -> None:
     src = _source_with(_element("GPU Core Voltage", "mV", 950.0))
     assert src.read_voltage_mv() == pytest.approx(950.0)

@@ -51,8 +51,16 @@ _VALUE_FORMAT = "<d"
 
 # Label-Teilstrings, die auf eine FPS-/Framerate-Sensorzeile hindeuten (case-insensitiv).
 _FPS_LABEL_HINTS = ("framerate", "fps", "frames per second")
-# Label-Teilstrings für die GPU-Core-Spannung (case-insensitiv).
-_VOLTAGE_LABEL_HINTS = ("gpu core voltage", "gpu voltage", "core voltage", "vddc", "gpu vid")
+# Label-Teilstrings für die GPU-Core-Spannung (case-insensitiv), DE + EN. Bewusst spezifisch
+# (Kern/Core), damit nicht versehentlich eine Rail-Spannung wie „GPU-Leistungsspannungen“ trifft.
+_VOLTAGE_LABEL_HINTS = (
+    "gpu core voltage",
+    "core voltage",
+    "kern-spannung",
+    "kernspannung",
+    "gpu vid",
+    "vddc",
+)
 
 
 class HwinfoSource:
