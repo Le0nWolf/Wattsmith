@@ -69,7 +69,14 @@ _T_END = (
 )
 _T_STEP = (
     "Schrittweite zwischen den Stufen in %. Kleiner = feinere Kurve, aber längerer Lauf "
-    "(mehr Stufen). 5 % ist ein guter Kompromiss."
+    "(mehr Stufen). 5 % ist ein guter Kompromiss. Wird ignoriert, wenn „Watt-für-Watt“ an ist."
+)
+_T_WATT_STEPS = (
+    "Statt in %-Schritten in Watt-Schritten messen — feiner (das Knie liegt oft zwischen zwei "
+    "%-Stufen), dauert aber länger. Der Bereich bleibt der Start/Ende-%-Bereich oben."
+)
+_T_WATT_STEP = (
+    "Schrittweite in Watt, wenn „Watt-für-Watt“ aktiv ist (z. B. 5 W; 1 W = sehr fein/lang)."
 )
 _T_SETTLE = (
     "Sekunden, die nach JEDEM Limit-Wechsel verworfen werden, damit sich Takt und Verbrauch "
@@ -208,6 +215,8 @@ class ConfigPanel:
         self._start = _num("Start %", 100, _T_START, min=20, max=100, step=5)
         self._end = _num("Ende %", 50, _T_END, min=20, max=100, step=5)
         self._step = _num("Schritt %", 5, _T_STEP, min=1, max=25, step=1)
+        self._watt_steps = _switch("Watt-für-Watt (feiner, langsamer)", False, _T_WATT_STEPS)
+        self._watt_step = _num("Watt-Schritt", 5, _T_WATT_STEP, min=1, max=50, step=1)
         self._settle = _num("Aufwärmen (s)", 8.0, _T_SETTLE, min=2, max=180, step=1)
         self._measure = _num("Messen (s)", 25.0, _T_MEASURE, min=5, max=900, step=5)
         ui.label(
@@ -303,6 +312,8 @@ class ConfigPanel:
                 low_tol_pct=float(self._low_tol.value),
                 min_fps_floor=float(self._floor.value) if self._floor_on.value else None,
                 randomize_order=bool(self._randomize.value),
+                watt_steps=bool(self._watt_steps.value),
+                watt_step=float(self._watt_step.value),
                 recheck_baseline=bool(self._recheck.value),
                 cooldown_target_c=float(self._cooldown_c.value)
                 if self._cooldown_on.value

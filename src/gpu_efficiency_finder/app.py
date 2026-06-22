@@ -485,11 +485,16 @@ class AppController:
         Der Timer läuft im Event-Loop (gültiger UI-Kontext) und pollt die vom Worker-Thread
         geschriebenen Daten — so werden UI-Elemente NIE aus dem Background-Thread erzeugt.
         """
-        steps = sweep_config.steps()
+        default_w: float | None = None
+        try:
+            # Nur für die Dauer-Schätzung; falls es fehlschlägt, läuft der Sweep trotzdem.
+            default_w = self._backend.get_limits(sweep_config.gpu_index).default_w
+        except Exception:
+            default_w = None
         per_step = sweep_config.settle_s + sweep_config.measure_s
         extra = 1 if sweep_config.recheck_baseline else 0
-        self._planned_steps = len(steps)
-        self._eta_total_s = (len(steps) + extra) * per_step
+        self._planned_steps = sweep_config.planned_step_count(default_w)
+        self._eta_total_s = (self._planned_steps + extra) * per_step
         self._eta_start = time.monotonic()
         self._progress.value = 0.0
         self._progress.visible = True

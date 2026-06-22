@@ -36,7 +36,7 @@ RowCallback = Callable[[SweepRow], None]
 StatusCallback = Callable[[str, Telemetry | None], None]
 SleepFn = Callable[[float], Awaitable[None]]
 ClockFn = Callable[[], float]
-ShuffleFn = Callable[[list[int]], None]
+ShuffleFn = Callable[[list[float]], None]
 
 
 @dataclass(slots=True)
@@ -79,11 +79,11 @@ class SweepEngine:
         idx: int = config.gpu_index  # type: ignore[attr-defined]
         limits = self._gpu.get_limits(idx)
 
-        watt_by_pct = {
-            pct: _clamp(limits.default_w * pct / 100.0, limits.min_w, limits.max_w)
-            for pct in config.steps()  # type: ignore[attr-defined]
-        }
-        order = list(watt_by_pct.keys())
+        # Ziel-Watt vom %-Bereich abgeleitet (Watt-für-Watt nur als Granularitäts-Schalter).
+        targets = config.target_watts(  # type: ignore[attr-defined]
+            limits.default_w, limits.min_w, limits.max_w
+        )
+        order = list(targets)
         if config.randomize_order:  # type: ignore[attr-defined]
             h.shuffle(order)
 
@@ -92,12 +92,13 @@ class SweepEngine:
         self._benchmark_start(h)
         self._perf.start()
         try:
-            for pct in order:
+            for watt in order:
                 if h.should_stop and h.should_stop():
                     aborted = True
                     break
+                pct = round(watt / limits.default_w * 100) if limits.default_w > 0 else 0
                 try:
-                    row = await self._measure_step(idx, pct, watt_by_pct[pct], config, h)
+                    row = await self._measure_step(idx, pct, watt, config, h)
                 except SweepAbortedError:
                     aborted = True
                     break
@@ -108,7 +109,9 @@ class SweepEngine:
             baseline_drift = None
             if not aborted and config.recheck_baseline and rows:  # type: ignore[attr-defined]
                 try:
-                    baseline_drift = await self._recheck_baseline(idx, watt_by_pct, config, rows, h)
+                    baseline_drift = await self._recheck_baseline(
+                        idx, max(targets), limits.default_w, config, rows, h
+                    )
                 except SweepAbortedError:
                     aborted = True
         finally:
@@ -183,18 +186,19 @@ class SweepEngine:
     async def _recheck_baseline(
         self,
         idx: int,
-        watt_by_pct: dict[int, float],
+        top_watt: float,
+        default_w: float,
         config: object,
         rows: list[SweepRow],
         h: SweepHooks,
     ) -> float | None:
         """Misst die höchste Stufe erneut; gibt die Abweichung der Ø-Perf in % zurück."""
-        top_pct = max(watt_by_pct)
-        first = next((r for r in rows if r.pct == top_pct), None)
+        top_pct = round(top_watt / default_w * 100) if default_w > 0 else 0
+        first = next((r for r in rows if abs(r.set_watt - top_watt) < 0.5), None)
         if first is None or first.avg_perf is None:
             return None
         _status(h, "Baseline-Gegenmessung (Thermal-Drift)…", None)
-        recheck = await self._measure_step(idx, top_pct, watt_by_pct[top_pct], config, h)
+        recheck = await self._measure_step(idx, top_pct, top_watt, config, h)
         if recheck.avg_perf is None or first.avg_perf <= 0:
             return None
         drift = (first.avg_perf - recheck.avg_perf) / first.avg_perf * 100.0
@@ -273,10 +277,6 @@ class SweepEngine:
             baseline_drift_pct=baseline_drift,
             config=_config_to_dict(config),
         )
-
-
-def _clamp(value: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, value))
 
 
 def _status(h: SweepHooks, message: str, telem: Telemetry | None) -> None:

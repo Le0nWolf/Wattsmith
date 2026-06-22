@@ -26,6 +26,10 @@ class SweepConfig(BaseModel):
     low_tol_pct: float = Field(5.0, ge=0, le=40)
     min_fps_floor: float | None = Field(None, ge=1)  # optional, abschaltbar
     randomize_order: bool = True
+    # Watt-für-Watt: Bereich bleibt in % (Afterburner-kompatibel), aber die Schrittweite
+    # wird in Watt gefahren (feiner, dafür langsamer).
+    watt_steps: bool = False
+    watt_step: float = Field(5.0, ge=1, le=50)
     cooldown_target_c: float | None = Field(None, ge=20, le=90)
     recheck_baseline: bool = True
     baseline_drift_warn_pct: float = Field(3.0, ge=0, le=50)
@@ -49,6 +53,43 @@ class SweepConfig(BaseModel):
 
     def iter_steps(self) -> Iterator[int]:
         yield from self.steps()
+
+    def target_watts(self, default_w: float, min_w: float, max_w: float) -> list[float]:
+        """Ziel-Watt für den Sweep, abgeleitet aus dem %-Bereich.
+
+        Ohne ``watt_steps``: eine Stufe je Prozent-Schritt. Mit ``watt_steps``: feinere
+        Schritte von ``watt_step`` Watt zwischen Start- und End-Watt. Alles auf das vom
+        Treiber erlaubte Intervall [min_w, max_w] geclampt und (auf 1 W gerundet) dedupliziert.
+        """
+        start_w = default_w * self.start_pct / 100.0
+        end_w = default_w * self.end_pct / 100.0
+        if self.watt_steps:
+            watts: list[float] = []
+            current = start_w
+            while current >= end_w:
+                watts.append(current)
+                current -= self.watt_step
+            if not watts or watts[-1] != end_w:
+                watts.append(end_w)
+        else:
+            watts = [default_w * pct / 100.0 for pct in self.steps()]
+        seen: set[int] = set()
+        out: list[float] = []
+        for watt in watts:
+            clamped = min(max(watt, min_w), max_w)
+            key = round(clamped)
+            if key not in seen:
+                seen.add(key)
+                out.append(clamped)
+        return out
+
+    def planned_step_count(self, default_w: float | None = None) -> int:
+        """Geschätzte Stufenzahl für die Dauer-Anzeige (ohne Clamping/Dedup)."""
+        if self.watt_steps and default_w:
+            start_w = default_w * self.start_pct / 100.0
+            end_w = default_w * self.end_pct / 100.0
+            return max(1, int((start_w - end_w) // self.watt_step) + 1)
+        return len(self.steps())
 
 
 class SourceConfig(BaseModel):
