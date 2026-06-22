@@ -19,6 +19,8 @@ from pydantic import ValidationError
 
 from gpu_efficiency_finder.config import SourceConfig, SweepConfig
 from gpu_efficiency_finder.constants import (
+    BENCHMARK_PRESETS,
+    DEFAULT_BENCHMARK_PRESET,
     PRESENTMON_PROCESS_HINT,
     MeasurementMode,
 )
@@ -41,7 +43,7 @@ _MODE_HELP = (
 )
 
 _BENCHMARK_HINT = (
-    "EXE über „Durchsuchen“ wählen, Startoptionen optional ins zweite Feld. Empfohlen: ein "
+    "Preset wählen (füllt Optionen + EXE-Empfehlung), EXE per „Durchsuchen“ setzen. Empfohlen: ein "
     "Loop-Benchmark (Superposition), damit die Last konstant und reproduzierbar ist. "
     "Score-am-Ende-Benchmarks sind ungeeignet (durchgehende Last nötig). FurMark erzeugt eine "
     "untypische Extrem-Last → nur für „Nur Takt“ sinnvoll, nicht repräsentativ fürs Gaming. "
@@ -101,6 +103,10 @@ _T_FLOOR_ON = (
 _T_FLOOR = (
     "Die Empfehlung sorgt dafür, dass Ø-FPS und 1%-Low NICHT unter diesen Wert fallen. Ist die "
     "Grenze bindend, zeigt das Tool, wie viel mehr Ersparnis ohne sie möglich wäre."
+)
+_T_PRESET = (
+    "Benchmark-Vorlage wählen → füllt die Startoptionen und zeigt unten, WELCHE EXE du nehmen "
+    "sollst (z. B. bei FurMark furmark.exe statt der GUI). EXE-Pfad wählst du per „Durchsuchen“."
 )
 _T_BENCH_EXE = (
     "Pfad zur Benchmark-EXE (Dauerlast). Über „Durchsuchen“ per Datei-Explorer wählen oder "
@@ -216,12 +222,21 @@ class ConfigPanel:
     def _build_benchmark_inputs(self) -> None:
         ui.separator()
         ui.label("Externe Benchmark-Last (optional)").classes("font-bold")
+        self._preset = self._select(
+            "Benchmark-Preset",
+            {name: name for name in BENCHMARK_PRESETS},
+            DEFAULT_BENCHMARK_PRESET,
+            _T_PRESET,
+            on_change=self._apply_preset,
+        )
         with ui.row().classes("w-full items-center no-wrap"):
             self._bench_exe = ui.input("Benchmark-EXE (Pfad)").classes("grow")
             ui.button(icon="folder_open", on_click=self._on_pick_exe).props("flat dense").tooltip(
                 "EXE per Datei-Explorer auswählen"
             )
             _info(_T_BENCH_EXE)
+        # Dynamische EXE-Empfehlung des gewählten Presets (z. B. „furmark.exe statt GUI“).
+        self._preset_hint = ui.label("").classes("text-xs text-amber")
         self._bench_args = _txt(
             "Startoptionen",
             _T_BENCH_ARGS,
@@ -229,6 +244,17 @@ class ConfigPanel:
         )
         self._warmup = _num("Benchmark-Warmup (s)", 10.0, _T_WARMUP, min=0, max=120, step=1)
         ui.label(_BENCHMARK_HINT).classes("text-xs text-grey")
+        self._apply_preset()  # initialen EXE-Hinweis setzen
+
+    def _apply_preset(self) -> None:
+        """Füllt die Startoptionen und zeigt den EXE-Hinweis des gewählten Presets."""
+        preset = BENCHMARK_PRESETS.get(str(self._preset.value))
+        if preset is None:
+            return
+        self._preset_hint.set_text(preset.exe_hint)
+        # „Eigener Befehl“ lässt eingetippte Optionen unangetastet.
+        if str(self._preset.value) != "Eigener Befehl":
+            self._bench_args.value = preset.args
 
     def set_benchmark_exe(self, path: str) -> None:
         """Setzt den EXE-Pfad (vom Datei-Dialog des Controllers aufgerufen)."""

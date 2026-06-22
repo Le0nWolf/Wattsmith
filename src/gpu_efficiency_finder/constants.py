@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import enum
+from dataclasses import dataclass
 
 __all__ = [
     "APP_TITLE",
     "BENCHMARK_PRESETS",
-    "DEFAULT_BENCHMARK_PLACEHOLDER",
     "DEFAULT_BENCHMARK_PRESET",
     "HWINFO_SHARED_MEM_NAME",
     "PRESENTMON_PROCESS_HINT",
+    "BenchmarkPreset",
     "MeasurementMode",
     "OperatingPointKind",
 ]
@@ -20,40 +21,69 @@ APP_TITLE = "GPU Efficiency Finder"
 # Globaler Name des HWiNFO-Shared-Memory-Mapped-File.
 HWINFO_SHARED_MEM_NAME = r"Global\HWiNFO_SENS_SM2"
 
-# Platzhalter für das Benchmark-Befehlsfeld in der UI (Superposition-Loop).
-DEFAULT_BENCHMARK_PLACEHOLDER = (
-    r'"C:\Program Files\Unigine Superposition\bin\superposition.exe" '
-    "-sound 0 -shaders_quality 1 -preset 0"
-)
-
 PRESENTMON_PROCESS_HINT = (
     "Name des tatsächlich rendernden Prozesses (bei Benchmark-Launchern oft ein Kindprozess, "
     "nicht der Launcher selbst)."
 )
 
-# Benchmark-Presets: Anzeigename → Befehls-Template. Die Pfade sind übliche Standard-
-# Installationsorte und müssen ggf. an die eigene Installation angepasst werden. Leerer
-# Befehl = Last wird manuell gestartet (z. B. ein Spiel).
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkPreset:
+    """Vorlage für einen Benchmark: empfohlene Startoptionen + Hinweis, WELCHE EXE zu wählen ist."""
+
+    args: str
+    exe_hint: str
+
+
+# Benchmark-Presets: Auswahl füllt die Startoptionen und zeigt eine EXE-Empfehlung. Den
+# EXE-Pfad wählt der Nutzer per „Durchsuchen“ — Pfade/Argumente ggf. an die Installation/
+# Version anpassen (insb. FurMark/OCCT-CLI variieren je nach Version).
 DEFAULT_BENCHMARK_PRESET = "Spiel / manuell (kein Befehl)"
 
-BENCHMARK_PRESETS: dict[str, str] = {
-    DEFAULT_BENCHMARK_PRESET: "",
-    "Unigine Superposition (Loop)": (
-        r'"C:\Program Files\Unigine Superposition\bin\superposition_cli.exe"'
-        " -preset 0 -mode 2 -sound 0 -shaders_quality 1 -textures_quality 1"
+BENCHMARK_PRESETS: dict[str, BenchmarkPreset] = {
+    DEFAULT_BENCHMARK_PRESET: BenchmarkPreset(
+        args="",
+        exe_hint=(
+            "EXE-Feld leer lassen — Spiel/Last selbst starten und während des Sweeps laufen lassen."
+        ),
     ),
-    "Unigine Heaven (Loop)": (
-        r'"C:\Program Files (x86)\Unigine\Heaven Benchmark 4.0\bin\browser_x64.exe"'
+    "Unigine Superposition (Loop)": BenchmarkPreset(
+        args="-preset 0 -mode 2 -sound 0 -shaders_quality 1 -textures_quality 1",
+        exe_hint=(
+            "EXE wählen: bin\\superposition_cli.exe (die CLI-Variante, "
+            "NICHT die GUI superposition.exe)."
+        ),
     ),
-    "Unigine Valley (Loop)": (
-        r'"C:\Program Files (x86)\Unigine\Valley Benchmark 1.0\bin\browser_x64.exe"'
+    "Unigine Heaven (Loop)": BenchmarkPreset(
+        args="",
+        exe_hint=(
+            "EXE wählen: bin\\browser_x64.exe; im Heaven-Fenster dann „Benchmark“ als Loop starten."
+        ),
     ),
-    "FurMark (nur für Modus „Nur Takt“)": (
-        r'"C:\Program Files\Geeks3D\Benchmarks\FurMark\furmark.exe"'
-        " /width=2560 /height=1440 /msaa=0 /nogui /nomenubar"
+    "Unigine Valley (Loop)": BenchmarkPreset(
+        args="",
+        exe_hint=(
+            "EXE wählen: bin\\browser_x64.exe; im Valley-Fenster dann „Benchmark“ als Loop starten."
+        ),
     ),
-    "OCCT (konstante 3D-Last)": r'"C:\Program Files\OCCT\OCCT.exe"',
-    "Eigener Befehl": "",
+    "FurMark (nur Modus „Nur Takt“)": BenchmarkPreset(
+        args="/width=2560 /height=1440 /msaa=0 /nogui /nomenubar",
+        exe_hint=(
+            "EXE wählen: furmark.exe (NICHT FurMark_GUI.exe / _fm2-gui.exe). "
+            "Args ggf. an start_benchmark.bat anpassen."
+        ),
+    ),
+    "OCCT (konstante 3D-Last)": BenchmarkPreset(
+        args="",
+        exe_hint=(
+            "EXE wählen: OCCT.exe; in OCCT einen KONSTANTEN 3D-Test starten "
+            "(nicht den variablen Stabilitätstest)."
+        ),
+    ),
+    "Eigener Befehl": BenchmarkPreset(
+        args="",
+        exe_hint="Eigene EXE per „Durchsuchen“ wählen und Startoptionen frei eintragen.",
+    ),
 }
 
 
