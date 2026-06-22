@@ -63,15 +63,51 @@ class HwinfoSource:
         self._mmap: mmap.mmap | None = None
 
     def start(self) -> None:
-        """Öffnet das HWiNFO-Shared-Memory-Mapping (lesend)."""
+        """Öffnet das HWiNFO-Shared-Memory-Mapping (lesend).
+
+        Unter Windows muss beim Anhängen an ein BESTEHENDES benanntes Mapping eine Länge > 0
+        angegeben werden (Länge 0 schlägt fehl). Daher: erst den Header mappen, daraus die
+        Gesamtgröße berechnen und dann mit dieser Länge neu mappen. Zusätzlich Namens-Fallback
+        mit/ohne ``Global\\``-Präfix.
+        """
+        last_exc: Exception | None = None
+        for name in self._candidate_names():
+            try:
+                self._mmap = self._open_mapping(name)
+            except (OSError, ValueError, HwinfoError) as exc:
+                last_exc = exc
+                continue
+            self._mem_name = name
+            _LOG.info("HWiNFO-Shared-Memory geöffnet (%s)", name)
+            return
+        raise HwinfoError(
+            "HWiNFO-Shared-Memory nicht verfügbar — läuft HWiNFO und ist "
+            "„Shared Memory Support“ aktiv? (Free-Version: nach 12 h automatisch aus)."
+        ) from last_exc
+
+    def _candidate_names(self) -> list[str]:
+        """Konfigurierter Name + Variante mit/ohne ``Global\\``-Präfix (dedupliziert)."""
+        prefix = "Global\\"
+        names = [self._mem_name]
+        if self._mem_name.startswith(prefix):
+            names.append(self._mem_name[len(prefix) :])
+        else:
+            names.append(prefix + self._mem_name)
+        return list(dict.fromkeys(names))
+
+    def _open_mapping(self, name: str) -> mmap.mmap:
+        """Liest den Header (kleines Mapping), bestimmt die Gesamtgröße und mappt diese."""
+        head = mmap.mmap(-1, _HEADER_SIZE, tagname=name, access=mmap.ACCESS_READ)
         try:
-            self._mmap = mmap.mmap(-1, 0, tagname=self._mem_name, access=mmap.ACCESS_READ)
-        except OSError as exc:
-            raise HwinfoError(
-                "HWiNFO-Shared-Memory nicht verfügbar — läuft HWiNFO und ist "
-                "„Shared Memory Support“ aktiv? (Free-Version: nach 12 h automatisch aus)."
-            ) from exc
-        _LOG.info("HWiNFO-Shared-Memory geöffnet (%s)", self._mem_name)
+            fields = struct.unpack(_HEADER_FORMAT, head[:_HEADER_SIZE])
+        finally:
+            head.close()
+        if fields[0] != _SIGNATURE:
+            raise HwinfoError("HWiNFO-Signatur fehlt — unerwartetes Shared-Memory-Format.")
+        sensor_end = fields[4] + fields[5] * fields[6]
+        reading_end = fields[7] + fields[8] * fields[9]
+        total = max(sensor_end, reading_end, _HEADER_SIZE)
+        return mmap.mmap(-1, total, tagname=name, access=mmap.ACCESS_READ)
 
     def stop(self) -> None:
         """Schließt das Mapping (idempotent)."""

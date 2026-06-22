@@ -59,9 +59,12 @@ class PresentMonSource:
         self._process_name = process_name
         self._proc: subprocess.Popen[str] | None = None
         self._reader: threading.Thread | None = None
+        self._stderr_reader: threading.Thread | None = None
         self._lock = threading.Lock()
         self._samples: list[tuple[float, float]] = []
         self._frametime_col: int | None = None
+        self._header_seen = False
+        self._stderr_tail: list[str] = []
 
     def start(self) -> None:
         """Startet PresentMon und liest STDOUT in einem Hintergrund-Thread."""
@@ -77,11 +80,13 @@ class PresentMonSource:
         with self._lock:
             self._samples.clear()
         self._frametime_col = None
+        self._header_seen = False
+        self._stderr_tail = []
         try:
             self._proc = subprocess.Popen(
                 args,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
@@ -95,7 +100,22 @@ class PresentMonSource:
             target=self._read_loop, name="presentmon-reader", daemon=True
         )
         self._reader.start()
+        self._stderr_reader = threading.Thread(
+            target=self._read_stderr, name="presentmon-stderr", daemon=True
+        )
+        self._stderr_reader.start()
         _LOG.info("PresentMon gestartet für Prozess '%s'", self._process_name)
+
+    def _read_stderr(self) -> None:
+        """Sammelt die letzten PresentMon-stderr-Zeilen (für die Fehlerdiagnose)."""
+        proc = self._proc
+        if proc is None or proc.stderr is None:
+            return
+        for line in iter(proc.stderr.readline, ""):
+            text = line.strip()
+            if text:
+                self._stderr_tail.append(text)
+                del self._stderr_tail[:-5]  # nur die letzten 5 Zeilen behalten
 
     def _read_loop(self) -> None:
         """Liest jede STDOUT-Zeile, parst sie defensiv und speichert die Frametime."""
@@ -107,6 +127,7 @@ class PresentMonSource:
             recv_time = time.monotonic()
             if not row:
                 continue
+            self._header_seen = True
             if self._frametime_col is None:
                 self._frametime_col = find_frametime_column(row)
                 if self._frametime_col is None:
@@ -144,9 +165,39 @@ class PresentMonSource:
                 _LOG.warning("PresentMon-Stop fehlgeschlagen: %s", exc)
         if self._reader is not None:
             self._reader.join(timeout=5.0)
+        if self._stderr_reader is not None:
+            self._stderr_reader.join(timeout=5.0)
+        with self._lock:
+            frame_count = len(self._samples)
+        _LOG.info("PresentMon gestoppt (%d Frames erfasst)", frame_count)
+        if frame_count == 0:
+            self._log_no_frames_diagnostics()
         self._proc = None
         self._reader = None
-        _LOG.info("PresentMon gestoppt")
+        self._stderr_reader = None
+
+    def _log_no_frames_diagnostics(self) -> None:
+        """Erklärt, warum keine Frames ankamen (häufigste Ursachen)."""
+        if not self._header_seen:
+            _LOG.warning(
+                "PresentMon lieferte KEINE Ausgabe — evtl. inkompatible CLI-Flags/Version "
+                "oder fehlende Admin-Rechte. stderr: %s",
+                " | ".join(self._stderr_tail) or "(leer)",
+            )
+        elif self._frametime_col is None:
+            _LOG.warning(
+                "PresentMon-Ausgabe ohne erkennbare Frametime-Spalte (Header-/Versionsformat?). "
+                "stderr: %s",
+                " | ".join(self._stderr_tail) or "(leer)",
+            )
+        else:
+            _LOG.warning(
+                "PresentMon lief, aber 0 Frames für Prozess '%s' — rendert der Prozess unter "
+                "genau diesem Namen? (FurMark: OpenGL-Demo; ggf. anderen Prozessnamen prüfen). "
+                "stderr: %s",
+                self._process_name,
+                " | ".join(self._stderr_tail) or "(leer)",
+            )
 
     def window_metrics(self, t_start: float, t_end: float) -> WindowMetrics | None:
         """Baut die Metriken aus allen Frametimes mit ``recv_time`` in [t_start, t_end]."""
