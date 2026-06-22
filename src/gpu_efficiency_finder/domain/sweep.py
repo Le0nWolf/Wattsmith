@@ -27,7 +27,7 @@ __all__ = ["SweepEngine", "SweepHooks"]
 
 _log = get_logger(__name__)
 
-_TELEMETRY_SAMPLES = 3  # schnelle Mittelung des Verbrauchs am Fensterende
+_MEASURE_POLL_S = 1.0  # Sampling-Intervall der Telemetrie während des Messfensters
 _COOLDOWN_POLL_S = 2.0
 _COOLDOWN_MAX_WAIT_S = 120.0
 _STOP_POLL_S = 0.25  # Auflösung, mit der während der Wartezeiten auf Stop geprüft wird
@@ -143,10 +143,10 @@ class SweepEngine:
 
         t_start = h.clock()
         _status(h, f"Stufe {pct}% ({watt:.0f} W): Messen…", self._safe_telemetry(idx))
-        await self._sleep(config.measure_s, h)  # type: ignore[attr-defined]
+        samples = await self._sample_window(idx, float(config.measure_s), h)  # type: ignore[attr-defined]
         t_end = h.clock()
 
-        telem = self._averaged_telemetry(idx)
+        telem = _average_telemetry(samples)
         metrics = self._perf.window_metrics(t_start, t_end)
         return SweepRow(
             set_watt=watt,
@@ -213,20 +213,32 @@ class SweepEngine:
 
     # -- Hardware-Helfer (kapseln Port-Aufrufe, fangen Telemetriefehler ab) ---
 
-    def _averaged_telemetry(self, idx: int) -> Telemetry:
-        samples = [self._gpu.read_telemetry(idx) for _ in range(_TELEMETRY_SAMPLES)]
-        n = len(samples)
-        # Zusatzsensoren aus der (HWiNFO-)Quelle; Spannung sonst NVML-Mittel (meist None).
+    async def _sample_window(self, idx: int, seconds: float, h: SweepHooks) -> list[Telemetry]:
+        """Sampelt Telemetrie ÜBER das gesamte Messfenster (statt eines Momentwerts), damit
+        Spannung/Temp/Power gemittelt werden und einzelne Ausreißer nicht durchschlagen."""
+        samples: list[Telemetry] = []
+        remaining = seconds
+        while remaining > 0:
+            if h.should_stop and h.should_stop():
+                raise SweepAbortedError
+            samples.append(self._read_full_telemetry(idx))
+            chunk = min(_MEASURE_POLL_S, remaining)
+            await h.sleep(chunk)
+            remaining -= chunk
+        if not samples:  # sehr kurzes Fenster
+            samples.append(self._read_full_telemetry(idx))
+        return samples
+
+    def _read_full_telemetry(self, idx: int) -> Telemetry:
+        """Eine Momentaufnahme: NVML-Telemetrie + (HWiNFO-)Spannung/Hotspot/Speicher-Temp."""
+        t = self._gpu.read_telemetry(idx)
         voltage = self._safe_read(lambda v: v.read_voltage_mv())
-        if voltage is None:
-            nvml_volts = [s.voltage_mv for s in samples if s.voltage_mv is not None]
-            voltage = (sum(nvml_volts) / len(nvml_volts)) if nvml_volts else None
         return Telemetry(
-            power_w=sum(s.power_w for s in samples) / n,
-            clock_mhz=sum(s.clock_mhz for s in samples) / n,
-            temp_c=sum(s.temp_c for s in samples) / n,
-            util_pct=sum(s.util_pct for s in samples) / n,
-            voltage_mv=voltage,
+            power_w=t.power_w,
+            clock_mhz=t.clock_mhz,
+            temp_c=t.temp_c,
+            util_pct=t.util_pct,
+            voltage_mv=voltage if voltage is not None else t.voltage_mv,
             hotspot_c=self._safe_read(lambda v: v.read_hotspot_c()),
             mem_temp_c=self._safe_read(lambda v: v.read_mem_temp_c()),
         )
@@ -314,6 +326,24 @@ class SweepEngine:
             baseline_drift_pct=baseline_drift,
             config=_config_to_dict(config),
         )
+
+
+def _average_telemetry(samples: list[Telemetry]) -> Telemetry:
+    """Mittelt eine Liste von Telemetrie-Samples; optionale Felder über die Nicht-None-Werte."""
+    n = len(samples)
+
+    def _avg_opt(values: list[float]) -> float | None:
+        return sum(values) / len(values) if values else None
+
+    return Telemetry(
+        power_w=sum(s.power_w for s in samples) / n,
+        clock_mhz=sum(s.clock_mhz for s in samples) / n,
+        temp_c=sum(s.temp_c for s in samples) / n,
+        util_pct=sum(s.util_pct for s in samples) / n,
+        voltage_mv=_avg_opt([s.voltage_mv for s in samples if s.voltage_mv is not None]),
+        hotspot_c=_avg_opt([s.hotspot_c for s in samples if s.hotspot_c is not None]),
+        mem_temp_c=_avg_opt([s.mem_temp_c for s in samples if s.mem_temp_c is not None]),
+    )
 
 
 def _status(h: SweepHooks, message: str, telem: Telemetry | None) -> None:
