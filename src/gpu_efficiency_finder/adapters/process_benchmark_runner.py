@@ -30,40 +30,48 @@ _LOG = get_logger(__name__)
 _TERMINATE_GRACE_S = 5.0
 
 
+def _split_args(args: str) -> list[str]:
+    """Zerlegt die Startoptionen in Tokens; etwaige Anführungszeichen werden entfernt."""
+    text = (args or "").strip()
+    if not text:
+        return []
+    try:
+        tokens = shlex.split(text, posix=False)
+    except ValueError:
+        tokens = text.split()
+    return [t.strip('"') for t in tokens]
+
+
 class ProcessBenchmarkRunner:
     """Startet/beendet einen externen Benchmark-Prozess als konstante Last.
 
-    ``command`` ist eine vollständige Kommandozeile (EXE-Pfad inkl. Argumente). Bei leerem
-    Befehl macht :meth:`start` nichts — die Last wird dann manuell vom Nutzer erzeugt.
+    ``exe`` ist der reine Pfad zur Benchmark-EXE (eigenes Argument → keine Quoting-Probleme
+    mit Leerzeichen im Pfad), ``args`` die optionalen Startoptionen. Bei leerem ``exe`` macht
+    :meth:`start` nichts — die Last wird dann manuell vom Nutzer erzeugt.
     """
 
-    def __init__(self, command: str, warmup_s: float = 10.0) -> None:
-        self._command = command
+    def __init__(self, exe: str, args: str = "", warmup_s: float = 10.0) -> None:
+        self._exe = exe
+        self._args = args
         self._warmup_s = warmup_s
         self._proc: subprocess.Popen[bytes] | None = None
 
     def start(self) -> None:
-        """Startet den Benchmark und wartet die Warmup-Zeit ab (No-Op bei leerem Befehl)."""
-        if not self._command or not self._command.strip():
-            _LOG.info("Kein Benchmark-Befehl gesetzt — Last wird manuell erzeugt.")
+        """Startet den Benchmark und wartet die Warmup-Zeit ab (No-Op bei leerer EXE)."""
+        exe = (self._exe or "").strip()
+        if not exe:
+            _LOG.info("Keine Benchmark-EXE gesetzt — Last wird manuell erzeugt.")
             self._proc = None
             return
-        # posix=False: Windows-Pfade enthalten Backslashes, die im POSIX-Modus als
-        # Escape-Zeichen fehlinterpretiert würden.
+        # EXE als eigenes Listenelement übergeben (Popen quotet selbst korrekt, auch bei
+        # Leerzeichen im Pfad); die Startoptionen separat parsen.
+        cmd = [exe, *_split_args(self._args)]
         try:
-            args = shlex.split(self._command, posix=False)
-        except ValueError as exc:
-            raise BenchmarkLaunchError(
-                f"Benchmark-Befehl konnte nicht zerlegt werden: {exc}"
-            ) from exc
-        if not args:
-            raise BenchmarkLaunchError("Benchmark-Befehl ist leer.")
-        try:
-            self._proc = subprocess.Popen(args)
+            self._proc = subprocess.Popen(cmd)
         except (OSError, ValueError) as exc:
             self._proc = None
             raise BenchmarkLaunchError(
-                f"Benchmark konnte nicht gestartet werden ({args[0]}): {exc}"
+                f"Benchmark konnte nicht gestartet werden ({exe}): {exc}"
             ) from exc
         _LOG.info(
             "Benchmark gestartet (PID %d), Aufwärmphase %.1f s …",

@@ -60,8 +60,10 @@ class SourceConfig(BaseModel):
     presentmon_path: str | None = None  # None → gebündelte EXE verwenden
     process_name: str | None = None
 
-    # Externe Benchmark-Last (optional — Last kann auch manuell gestartet werden)
-    benchmark_command: str | None = None
+    # Externe Benchmark-Last (optional — Last kann auch manuell gestartet werden).
+    # EXE-Pfad und Startoptionen getrennt: kein Quoting-Problem bei Leerzeichen im Pfad.
+    benchmark_exe: str | None = None
+    benchmark_args: str = ""
     benchmark_warmup_s: float = Field(10.0, ge=0, le=120)
 
     # HWiNFO

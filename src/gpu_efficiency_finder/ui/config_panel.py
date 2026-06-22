@@ -12,16 +12,13 @@ Reine Eingabe-Sammelei — keine Domain-Logik, keine Hardware.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 
 from nicegui import ui
 from pydantic import ValidationError
 
 from gpu_efficiency_finder.config import SourceConfig, SweepConfig
 from gpu_efficiency_finder.constants import (
-    BENCHMARK_PRESETS,
-    DEFAULT_BENCHMARK_PLACEHOLDER,
-    DEFAULT_BENCHMARK_PRESET,
     PRESENTMON_PROCESS_HINT,
     MeasurementMode,
 )
@@ -44,13 +41,13 @@ _MODE_HELP = (
 )
 
 _BENCHMARK_HINT = (
-    "Preset wählen → Befehl wird gesetzt; Pfad ggf. an deine Installation anpassen. Empfohlen: "
-    "ein Loop-Benchmark (Superposition), damit die Last konstant und reproduzierbar ist. "
+    "EXE über „Durchsuchen“ wählen, Startoptionen optional ins zweite Feld. Empfohlen: ein "
+    "Loop-Benchmark (Superposition), damit die Last konstant und reproduzierbar ist. "
     "Score-am-Ende-Benchmarks sind ungeeignet (durchgehende Last nötig). FurMark erzeugt eine "
     "untypische Extrem-Last → nur für „Nur Takt“ sinnvoll, nicht repräsentativ fürs Gaming. "
     "OCCT eignet sich; aber für die Messung eine KONSTANTE Last wählen — wechselnde Lasten "
     "(gut für Undervolt-Stabilität) verrauschen die Effizienzkurve. 3DMark braucht für CLI die "
-    "Professional Edition. Feld leer lassen = Last manuell starten (z. B. ein Spiel)."
+    "Professional Edition. EXE-Feld leer lassen = Last manuell starten (z. B. ein Spiel)."
 )
 
 _HWINFO_HINT = (
@@ -105,13 +102,13 @@ _T_FLOOR = (
     "Die Empfehlung sorgt dafür, dass Ø-FPS und 1%-Low NICHT unter diesen Wert fallen. Ist die "
     "Grenze bindend, zeigt das Tool, wie viel mehr Ersparnis ohne sie möglich wäre."
 )
-_T_PRESET = (
-    "Vorlage für den Benchmark-Befehl. Auswählen → Befehl wird gesetzt; Pfad an deine "
-    "Installation anpassen. „Spiel / manuell“ = Feld leer (Last selbst starten)."
+_T_BENCH_EXE = (
+    "Pfad zur Benchmark-EXE (Dauerlast). Über „Durchsuchen“ per Datei-Explorer wählen oder "
+    "direkt eintippen. Leer lassen = Last selbst starten (z. B. ein Spiel)."
 )
-_T_BENCH_CMD = (
-    "Vollständiger Befehl + Argumente zum Starten der Dauerlast. Leer lassen, wenn du die Last "
-    "(z. B. ein Spiel) selbst startest."
+_T_BENCH_ARGS = (
+    "Startoptionen/Argumente für die EXE (z. B. Auflösung, Loop-Modus, „kein GUI“). Optional — "
+    "je nach Benchmark unterschiedlich."
 )
 _T_WARMUP = (
     "EINMALIGE Wartezeit direkt nach dem Start des Benchmarks, bis er geladen und im Loop ist — "
@@ -153,7 +150,12 @@ def _switch(label: str, value: bool, info: str) -> ui.switch:
 class ConfigPanel:
     """Sammelt alle Konfigurationswerte und liefert validierte Config-Objekte."""
 
-    def __init__(self, gpus: Sequence[GpuInfo]) -> None:
+    def __init__(
+        self,
+        gpus: Sequence[GpuInfo],
+        on_pick_exe: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
+        self._on_pick_exe = on_pick_exe
         self._gpu_options = {g.index: f"GPU {g.index}: {g.name}" for g in gpus}
         default_idx = next(iter(self._gpu_options), 0)
         with ui.card().classes("w-full").props("dark"):
@@ -214,25 +216,23 @@ class ConfigPanel:
     def _build_benchmark_inputs(self) -> None:
         ui.separator()
         ui.label("Externe Benchmark-Last (optional)").classes("font-bold")
-        self._preset = self._select(
-            "Benchmark-Preset",
-            {name: name for name in BENCHMARK_PRESETS},
-            DEFAULT_BENCHMARK_PRESET,
-            _T_PRESET,
-            on_change=self._apply_preset,
-        )
-        self._benchmark = _txt(
-            "Benchmark-Befehl", _T_BENCH_CMD, placeholder=DEFAULT_BENCHMARK_PLACEHOLDER
+        with ui.row().classes("w-full items-center no-wrap"):
+            self._bench_exe = ui.input("Benchmark-EXE (Pfad)").classes("grow")
+            ui.button(icon="folder_open", on_click=self._on_pick_exe).props("flat dense").tooltip(
+                "EXE per Datei-Explorer auswählen"
+            )
+            _info(_T_BENCH_EXE)
+        self._bench_args = _txt(
+            "Startoptionen",
+            _T_BENCH_ARGS,
+            placeholder="z. B. /width=2560 /height=1440 /msaa=0 /nogui",
         )
         self._warmup = _num("Benchmark-Warmup (s)", 10.0, _T_WARMUP, min=0, max=120, step=1)
         ui.label(_BENCHMARK_HINT).classes("text-xs text-grey")
 
-    def _apply_preset(self) -> None:
-        """Füllt das Befehlsfeld anhand des gewählten Presets (außer „Eigener Befehl“)."""
-        name = str(self._preset.value)
-        if name == "Eigener Befehl":
-            return
-        self._benchmark.value = BENCHMARK_PRESETS.get(name, "")
+    def set_benchmark_exe(self, path: str) -> None:
+        """Setzt den EXE-Pfad (vom Datei-Dialog des Controllers aufgerufen)."""
+        self._bench_exe.value = path
 
     def _build_presentmon_inputs(self) -> None:
         ui.separator()
@@ -279,7 +279,8 @@ class ConfigPanel:
                 mode=MeasurementMode(self._mode.value),
                 presentmon_path=_blank_to_none(self._pm_path.value),
                 process_name=_blank_to_none(self._pm_process.value),
-                benchmark_command=_blank_to_none(self._benchmark.value),
+                benchmark_exe=_blank_to_none(self._bench_exe.value),
+                benchmark_args=str(self._bench_args.value or "").strip(),
                 benchmark_warmup_s=float(self._warmup.value),
                 hwinfo_shared_mem=_blank_to_none(self._hwinfo_mem.value),
             )

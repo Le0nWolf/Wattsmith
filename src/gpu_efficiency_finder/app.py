@@ -46,9 +46,9 @@ Verbrauch und Performance und empfiehlt am Ende das sparsamste Limit ohne spürb
 Du musst nur für **konstante GPU-Last** sorgen — den Rest macht das Tool allein.
 
 **In 6 Schritten:**
-1. **Last vorbereiten** — entweder unten einen *Benchmark-Befehl* eintragen (Loop-Benchmark wie
-   Unigine Superposition, läuft endlos) **oder** ein Spiel manuell starten und es während des
-   ganzen Sweeps laufen lassen.
+1. **Last vorbereiten** — entweder unten die *Benchmark-EXE* wählen (Button „Durchsuchen“) und
+   optional *Startoptionen* eintragen (Loop-Benchmark wie Unigine Superposition, läuft endlos)
+   **oder** ein Spiel manuell starten und es während des ganzen Sweeps laufen lassen.
 2. **Mess-Modus wählen** — *Nur Takt* (schnell, kein Setup) · *PresentMon (FPS)* (echte FPS +
    1%/0.1%-Lows, braucht den Prozessnamen) · *Compute* (eigene Last) · *HWiNFO*.
 3. **Bereich/Dauern/Toleranzen** prüfen — die Defaults (100→50 %, 3 % Ø-FPS, 5 % 1%-Low) passen
@@ -117,11 +117,40 @@ def build_perf_source(source_config: SourceConfig, backend: GpuBackend) -> PerfS
 
 
 def build_benchmark(source_config: SourceConfig) -> BenchmarkRunner | None:
-    """Erzeugt einen ProcessBenchmarkRunner oder ``None``, wenn kein Befehl gesetzt ist."""
-    command = source_config.benchmark_command
-    if not command or not command.strip():
+    """Erzeugt einen ProcessBenchmarkRunner oder ``None``, wenn keine EXE gesetzt ist."""
+    exe = source_config.benchmark_exe
+    if not exe or not exe.strip():
         return None
-    return ProcessBenchmarkRunner(command, source_config.benchmark_warmup_s)
+    return ProcessBenchmarkRunner(
+        exe, source_config.benchmark_args, source_config.benchmark_warmup_s
+    )
+
+
+def _open_file_dialog() -> str | None:
+    """Öffnet einen nativen „Datei öffnen“-Dialog (tkinter) und liefert den gewählten Pfad.
+
+    Läuft serverseitig auf demselben Rechner wie der Browser (lokale App). Ist tkinter nicht
+    verfügbar (z. B. nicht gebündelt), wird ``None`` zurückgegeben — der Pfad lässt sich dann
+    weiterhin manuell eintippen.
+    """
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception:
+        # tkinter optional/nicht gebündelt → sauberer Fallback auf manuelle Eingabe.
+        return None
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        path = filedialog.askopenfilename(
+            title="Benchmark-EXE auswählen",
+            filetypes=[("Programme", "*.exe"), ("Alle Dateien", "*.*")],
+        )
+        root.destroy()
+    except Exception:
+        return None
+    return path or None
 
 
 class AppController:
@@ -158,7 +187,7 @@ class AppController:
             ui.markdown(_HELP_MD)
         with ui.row().classes("w-full no-wrap"):
             with ui.column().classes("w-1/3"):
-                self._panel = ConfigPanel(self._gpus)
+                self._panel = ConfigPanel(self._gpus, on_pick_exe=self._pick_exe)
                 self._build_buttons()
             with ui.column().classes("w-2/3"):
                 self._status = ui.label("Bereit.").classes("text-sm")
@@ -311,7 +340,21 @@ class AppController:
 
     def _on_stop(self) -> None:
         self._stop_flag = True
-        self._status.set_text("Stop angefordert — Default-Limit wird wiederhergestellt …")
+        # In _status_msg schreiben, damit der Poll-Timer (_tick) die Meldung nicht überschreibt.
+        self._status_msg = "Stop angefordert — Sweep wird abgebrochen, Default wird gesetzt …"
+        self._status.set_text(self._status_msg)
+
+    async def _pick_exe(self) -> None:
+        """Öffnet den Datei-Dialog (im Worker-Thread, da blockierend) und setzt den EXE-Pfad."""
+        path = await run.io_bound(_open_file_dialog)
+        if path:
+            self._panel.set_benchmark_exe(path)
+            ui.notify(f"Benchmark-EXE gewählt: {path}", type="positive")
+        else:
+            ui.notify(
+                "Keine Datei gewählt (oder Dialog nicht verfügbar — Pfad bitte manuell eintippen).",
+                type="warning",
+            )
 
     async def _on_apply(self) -> None:
         rec = self._result.recommendation if self._result else None

@@ -14,6 +14,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from gpu_efficiency_finder.domain import analysis
+from gpu_efficiency_finder.errors import SweepAbortedError
 from gpu_efficiency_finder.logging_setup import get_logger
 from gpu_efficiency_finder.models import (
     SweepResult,
@@ -29,6 +30,7 @@ _log = get_logger(__name__)
 _TELEMETRY_SAMPLES = 3  # schnelle Mittelung des Verbrauchs am Fensterende
 _COOLDOWN_POLL_S = 2.0
 _COOLDOWN_MAX_WAIT_S = 120.0
+_STOP_POLL_S = 0.25  # Auflösung, mit der während der Wartezeiten auf Stop geprüft wird
 
 RowCallback = Callable[[SweepRow], None]
 StatusCallback = Callable[[str, Telemetry | None], None]
@@ -94,14 +96,21 @@ class SweepEngine:
                 if h.should_stop and h.should_stop():
                     aborted = True
                     break
-                row = await self._measure_step(idx, pct, watt_by_pct[pct], config, h)
+                try:
+                    row = await self._measure_step(idx, pct, watt_by_pct[pct], config, h)
+                except SweepAbortedError:
+                    aborted = True
+                    break
                 rows.append(row)
                 if h.on_row:
                     h.on_row(row)
 
             baseline_drift = None
             if not aborted and config.recheck_baseline and rows:  # type: ignore[attr-defined]
-                baseline_drift = await self._recheck_baseline(idx, watt_by_pct, config, rows, h)
+                try:
+                    baseline_drift = await self._recheck_baseline(idx, watt_by_pct, config, rows, h)
+                except SweepAbortedError:
+                    aborted = True
         finally:
             self._teardown(idx, h)
 
@@ -123,12 +132,12 @@ class SweepEngine:
     ) -> SweepRow:
         self._gpu.set_power_limit_w(idx, watt)
         _status(h, f"Stufe {pct}% ({watt:.0f} W): Aufwärmen…", None)
-        await h.sleep(config.settle_s)  # type: ignore[attr-defined]
+        await self._sleep(config.settle_s, h)  # type: ignore[attr-defined]
         await self._cooldown_if_needed(idx, config, h)
 
         t_start = h.clock()
         _status(h, f"Stufe {pct}% ({watt:.0f} W): Messen…", self._safe_telemetry(idx))
-        await h.sleep(config.measure_s)  # type: ignore[attr-defined]
+        await self._sleep(config.measure_s, h)  # type: ignore[attr-defined]
         t_end = h.clock()
 
         telem = self._averaged_telemetry(idx)
@@ -150,12 +159,25 @@ class SweepEngine:
             return
         waited = 0.0
         while waited < _COOLDOWN_MAX_WAIT_S:
+            if h.should_stop and h.should_stop():
+                raise SweepAbortedError
             telem = self._safe_telemetry(idx)
             if telem is None or telem.temp_c <= target:
                 return
             _status(h, f"Abkühlen auf ≤ {target:.0f} °C (aktuell {telem.temp_c:.0f} °C)…", telem)
             await h.sleep(_COOLDOWN_POLL_S)
             waited += _COOLDOWN_POLL_S
+
+    async def _sleep(self, seconds: float, h: SweepHooks) -> None:
+        """Unterbrechbarer Sleep: prüft regelmäßig ``should_stop`` und bricht via
+        ``SweepAbortedError`` ab — so wirkt Stop sofort, nicht erst nach der Stufe."""
+        remaining = float(seconds)
+        while remaining > 0:
+            if h.should_stop and h.should_stop():
+                raise SweepAbortedError
+            chunk = min(_STOP_POLL_S, remaining)
+            await h.sleep(chunk)
+            remaining -= chunk
 
     async def _recheck_baseline(
         self,
