@@ -28,7 +28,13 @@ from gpu_efficiency_finder.errors import GpuEfficiencyError, GpuPermissionError
 from gpu_efficiency_finder.infra.persistence import export_csv, load_run, save_run
 from gpu_efficiency_finder.infra.presentmon_bundle import resolve_presentmon_path
 from gpu_efficiency_finder.logging_setup import get_logger
-from gpu_efficiency_finder.models import GpuInfo, SweepResult, SweepRow, Telemetry
+from gpu_efficiency_finder.models import (
+    GpuInfo,
+    OperatingPoint,
+    SweepResult,
+    SweepRow,
+    Telemetry,
+)
 from gpu_efficiency_finder.ports import BenchmarkRunner, GpuBackend, PerfSource, VoltageSource
 from gpu_efficiency_finder.ui.chart import EfficiencyChart
 from gpu_efficiency_finder.ui.config_panel import ConfigPanel
@@ -84,6 +90,18 @@ def _format_mmss(seconds: float) -> str:
     """Sekunden als ``m:ss`` formatieren."""
     total = int(seconds)
     return f"{total // 60}:{total % 60:02d}"
+
+
+def _op_line(op: OperatingPoint) -> str:
+    """Kompakte Beschreibung eines Betriebspunkts (Watt, % vom Default, Ersparnis, Perf/W)."""
+    parts = [f"{op.set_watt:.0f} W ({op.pct_of_default:.0f}% vom Default)"]
+    if op.savings_w > 0:
+        parts.append(f"spart {op.savings_w:.0f} W ({op.savings_pct:.0f}%)")
+    if op.perf_per_w is not None:
+        parts.append(f"{op.perf_per_w:.2f} Perf/W")
+    if op.avg_perf_loss_pct:
+        parts.append(f"Ø −{op.avg_perf_loss_pct:.1f}%")
+    return " · ".join(parts)
 
 
 def build_backend() -> GpuBackend:
@@ -233,7 +251,7 @@ class AppController:
                 self._eta = ui.label("").classes("text-xs text-grey")
                 self._chart = EfficiencyChart()
                 self._table = ResultsTable()
-                self._recommendation = ui.label("").classes("text-sm")
+                self._recommendation = ui.markdown("").classes("text-sm")
         if not self._gpus:
             # Keine NVIDIA-GPU/Treiber: Sweep deaktivieren statt später eine Exception
             # zu werfen. Der Hinweis-Banner erklärt es; die UI bleibt voll bedienbar.
@@ -365,21 +383,29 @@ class AppController:
             recommendation=result.recommendation,
             fps_floor=floor,
         )
-        self._recommendation.set_text(self._format_recommendation(result))
+        self._recommendation.set_content(self._format_summary(result))
 
     @staticmethod
-    def _format_recommendation(result: SweepResult) -> str:
+    def _format_summary(result: SweepResult) -> str:
+        """Markdown-Zusammenfassung: zeigt IMMER den effizientesten Punkt + Knie, dazu die
+        (toleranzabhängige) Empfehlung — unabhängig davon, wo die Empfehlung landet."""
+        lines: list[str] = []
+        peak = result.efficiency_peak
+        if peak is not None:
+            lines.append(f"🟦 **Effizientester Punkt (Perf/W):** {_op_line(peak)}")
+        knee = result.knee
+        if knee is not None:
+            lines.append(f"🟣 **Knie (abnehmender Nutzen):** {_op_line(knee)}")
         rec = result.recommendation
-        if rec is None or rec.recommended is None:
-            return rec.message if rec and rec.message else "Keine Empfehlung verfügbar."
-        op = rec.recommended
-        text = (
-            f"Empfehlung: {op.set_watt:.0f} W ({op.pct_of_default:.0f}% vom Default) — "
-            f"spart {op.savings_w:.0f} W ({op.savings_pct:.0f}%)."
-        )
-        if rec.floor_binding and rec.message:
-            text += "  " + rec.message
-        return text
+        if rec is not None and rec.recommended is not None:
+            lines.append(f"🟢 **Empfehlung (mit Toleranz):** {_op_line(rec.recommended)}")
+            if rec.floor_binding and rec.message:
+                lines.append(rec.message)
+        elif rec is not None and rec.message:
+            lines.append(f"🟢 **Empfehlung:** {rec.message}")
+        if not lines:
+            return "Keine Auswertung verfügbar."
+        return "  \n".join(lines)
 
     # -- Aktionen ---------------------------------------------------------
 
@@ -523,7 +549,7 @@ class AppController:
         self._telem_str = ""
         self._last_rendered_count = -1
         self._table.clear()
-        self._recommendation.set_text("")
+        self._recommendation.set_content("")
         self._start_btn.disable()
         self._stop_btn.enable()
         self._start_polling(sweep_config)
