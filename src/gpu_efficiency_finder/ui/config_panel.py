@@ -89,7 +89,12 @@ _T_LOW_TOL = (
 )
 _T_RANDOMIZE = (
     "Misst die Stufen in zufälliger Reihenfolge, damit das Aufheizen der Karte die Kurve nicht "
-    "systematisch verzerrt. Die Anzeige bleibt sortiert. Empfohlen: an."
+    "systematisch verzerrt. Die Anzeige bleibt sortiert. Empfohlen: an. Für einen einfachen "
+    "Test/Debug ausschalten → Stufen laufen dann sauber 100 % → … → 50 % der Reihe nach."
+)
+_T_RECHECK = (
+    "Misst am Ende die höchste Stufe erneut und warnt bei Thermal-Drift. Setzt das Limit dabei "
+    "kurz wieder hoch (sieht aus wie „springt zurück“ — ist Absicht). Zum Testen abschaltbar."
 )
 _T_COOLDOWN_ON = (
     "Wenn an: vor jeder Stufe warten, bis die GPU-Temperatur unter den Zielwert fällt. "
@@ -212,6 +217,7 @@ class ConfigPanel:
         self._avg_tol = _num("Toleranz Ø %", 3.0, _T_AVG_TOL, min=0, max=30, step=0.5)
         self._low_tol = _num("Toleranz Low %", 5.0, _T_LOW_TOL, min=0, max=40, step=0.5)
         self._randomize = _switch("Reihenfolge randomisieren", True, _T_RANDOMIZE)
+        self._recheck = _switch("Baseline-Gegenmessung am Ende", True, _T_RECHECK)
         self._cooldown_on = _switch("Abkühlen bis Ziel-Temperatur", False, _T_COOLDOWN_ON)
         self._cooldown_c = _num("Ziel °C", 55.0, _T_COOLDOWN_C, min=20, max=90, step=1)
 
@@ -297,6 +303,7 @@ class ConfigPanel:
                 low_tol_pct=float(self._low_tol.value),
                 min_fps_floor=float(self._floor.value) if self._floor_on.value else None,
                 randomize_order=bool(self._randomize.value),
+                recheck_baseline=bool(self._recheck.value),
                 cooldown_target_c=float(self._cooldown_c.value)
                 if self._cooldown_on.value
                 else None,

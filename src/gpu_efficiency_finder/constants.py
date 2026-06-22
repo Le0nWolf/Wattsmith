@@ -67,10 +67,10 @@ BENCHMARK_PRESETS: dict[str, BenchmarkPreset] = {
         ),
     ),
     "FurMark (nur Modus „Nur Takt“)": BenchmarkPreset(
-        args="/width=2560 /height=1440 /msaa=0 /nogui /nomenubar",
+        args="--demo furmark-gl --width 2560 --height 1440 --max-time 0 --no-score-box",
         exe_hint=(
             "EXE wählen: furmark.exe (NICHT FurMark_GUI.exe / _fm2-gui.exe). "
-            "Args ggf. an start_benchmark.bat anpassen."
+            "Args sind FurMark-2-Stil (--demo/--width …); --max-time 0 = läuft ohne Limit weiter."
         ),
     ),
     "OCCT (konstante 3D-Last)": BenchmarkPreset(
